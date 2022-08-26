@@ -3,17 +3,15 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-build:
-	sbt package
 
 cluster-info:
 	kubectl cluster-info
 
 package:
-	sbt package
+	cd .. && sbt package
 
 assembly:
-	sbt assembly
+	cd .. && sbt assembly
 
 send-app: package
 	scp -rp ${APP_DIR} ${SHARE_ADDR}
@@ -73,6 +71,13 @@ test-client-mode-job1:
 		--class jotting.simple.Job1 \
 		${SHARE_APP}
 
+test-standalone-mode-job2:
+	spark-submit \
+		--master local[4] \
+		--class jotting.simple.Job2 \
+		--packages com.typesafe:config:1.4.2 \
+		--jars ${DEPS_DIR} \
+		${APP_DIR}
 
 # NOTE:
 # `--files` & `--jars` require `make send-conf` & `make send-jars`, respectfully

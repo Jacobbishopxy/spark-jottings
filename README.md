@@ -2,7 +2,11 @@
 
 ## Important
 
-- Since we are using k8s spark cluster (see [detail](https://stackoverflow.com/a/68779353)), we need [bcpkix-jdk15on](https://mvnrepository.com/artifact/org.bouncycastle/bcpkix-jdk15on) & [bcprov-jdk15on](https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk15on) for `spark-submit`. In other words, these two dependencies must be included in `$SPARK_HOME/jars`.
+### Cluster mode
+
+Cluster mode means `spark-submit --master k8s://${MASTER_ADDR} ...`.
+
+- Since we are using k8s spark cluster (see [detail](https://stackoverflow.com/a/68779353)), we need [bcpkix-jdk15on](https://mvnrepository.com/artifact/org.bouncycastle/bcpkix-jdk15on) & [bcprov-jdk15on](https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk15on) for `spark-submit`. In other words, these two dependencies must be included in `$SPARK_HOME/jars` (Note: run `echo 'sc.getConf.get("spark.home")' | spark-shell` to find out `$SPARK_HOME` if needed).
 
 - In addition, we need [hadoop-aws](https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-aws) as an extra package while executing `spark-submit`.
 
@@ -16,6 +20,10 @@
   ```
 
 - [k8s spark cluster job cleaner](https://github.com/dtan4/k8s-job-cleaner)
+
+### Client mode
+
+Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/master/bitnami/spark) in k8s.
 
 - NFS share volume (Only required in Spark Client Mode, which used for uploading local JARs).
 

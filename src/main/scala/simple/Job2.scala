@@ -35,7 +35,7 @@ object Job2 {
     implicit val spark = SparkSession
       .builder()
       .appName("Spark SQL data sources example")
-      .config("spark.some.config.option", "some-value")
+      // .config("spark.some.config.option", "some-value")
       .getOrCreate()
 
     val config: Config = ConfigFactory.load(configFile).getConfig("job2")
@@ -50,6 +50,7 @@ object Job2 {
     )
 
     runJdbcDatasetWrite(conn)
+    runJdbcDatasetRead(conn)
 
     spark.stop()
   }
