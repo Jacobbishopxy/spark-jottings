@@ -4,7 +4,11 @@ import java.util.Properties
 
 import org.apache.spark.sql.SparkSession
 
-object SQLDataSourceExample {
+/*
+As an example, we omitted real files in this project. If test is required, please download
+real files from [Spark project](https://github.com/apache/spark).
+ */
+object DataSources {
   val resources = "src/main/resources/"
 
   case class Person(name: String, age: Long)
