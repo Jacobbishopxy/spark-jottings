@@ -11,8 +11,7 @@ object RDDRelation {
 
     val spark = SparkSession
       .builder()
-      .appName("Spark SQL data sources example")
-      .config("spark.some.config.option", "some-value")
+      .appName("Spark RDD relation example")
       .getOrCreate()
 
     process(spark)
