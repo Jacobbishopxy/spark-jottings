@@ -88,6 +88,8 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 - [DFWhereFilter](./src/main/scala/example/DFWhereFilter.scala): `filter` & `where` clauses
 - [DFWhen](./src/main/scala/example/DFWhen.scala): "case when" and "when otherwise"
 - [DFPivotAndUnpivot](./src/main/scala/example/DFPivotAndUnpivot.scala): pivot and unpivot
+- [DFGroupBy](./src/main/scala/example/DFGroupBy.scala): `groupBy` and its methods
+- [DFSort](./src/main/scala/example/DFSort.scala): `sort` and `orderBy`
 
 ## Notes
 
@@ -97,3 +99,4 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 
 - [Running Apache Spark on Kubernetes](https://medium.com/empathyco/running-apache-spark-on-kubernetes-2e64c73d0bb2)
 - [Apache Spark: Differences between client and cluster deploy modes](https://stackoverflow.com/questions/37027732/apache-spark-differences-between-client-and-cluster-deploy-modes)
+- [Spark Scala examples](https://github.com/spark-examples/spark-scala-examples)
