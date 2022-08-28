@@ -8,28 +8,9 @@ import org.apache.spark.sql.types.StructField
 import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.Row
 
+import jotting.Jotting._
+
 object Job2 {
-
-  val configFile = "application.conf"
-
-  case class Conn(
-      db: String,
-      driver: String,
-      host: String,
-      port: Int,
-      database: String,
-      user: String,
-      password: String
-  ) {
-    def url: String = s"jdbc:$db://$host:$port/$database?zeroDateTimeBehavior=convertToNull"
-
-    def options: Map[String, String] = Map(
-      "url"      -> this.url,
-      "driver"   -> driver,
-      "user"     -> user,
-      "password" -> password
-    )
-  }
 
   def main(args: Array[String]): Unit = {
     implicit val spark = SparkSession

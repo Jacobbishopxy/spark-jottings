@@ -10,7 +10,7 @@ object UserDefinedUntypedAggregator {
 
     val spark = SparkSession
       .builder()
-      .appName("Spark typed aggregator example")
+      .appName("Spark untyped aggregator example")
       .getOrCreate()
 
     import spark.implicits._
