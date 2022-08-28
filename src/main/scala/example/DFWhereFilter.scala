@@ -12,7 +12,7 @@ object DFWhereFilter {
       .appName("Spark DataFrame filter and where example")
       .getOrCreate()
 
-    import spark.implicits._
+    process(spark)
 
     spark.stop()
   }

@@ -1,8 +1,6 @@
-# Spark Demo
+# Spark Jotting
 
-## Important
-
-### Cluster mode
+## Cluster mode
 
 Cluster mode means `spark-submit --master k8s://${MASTER_ADDR} ...`.
 
@@ -21,7 +19,7 @@ Cluster mode means `spark-submit --master k8s://${MASTER_ADDR} ...`.
 
 - [k8s spark cluster job cleaner](https://github.com/dtan4/k8s-job-cleaner)
 
-### Client mode
+## Client mode
 
 Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/master/bitnami/spark) in k8s.
 
@@ -78,6 +76,17 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
   ```sh
   kubectl describe pod -n dev <SPARK_DRIVER_POD>
   ```
+
+## Examples
+
+- [RDDRelation](./src/main/scala/example/RDDRelation.scala): RDD
+- [DataSources](./src/main/scala/example/DataSources.scala): data sources, such as CSV, Parquet, Jdbc, and etc.
+- [TypedAggregator](./src/main/scala/example/TypedAggregator.scala): simple aggregator
+- [UserDefinedTypedAggregator](./src/main/scala/example/UserDefinedTypedAggregator.scala): user defined aggregator
+- [UserDefinedUntypedAggregator.](./src/main/scala/example/UserDefinedUntypedAggregator.scala): user defined aggregator and with `spark.sql`
+- [DFWithColumn](./src/main/scala/example/DFWithColumn.scala): `withColumn` function
+- [DFWhereFilter](./src/main/scala/example/DFWhereFilter.scala): `filter` & `where` clauses
+- [DFWhen](./src/main/scala/example/DFWhen.scala): "case when" and "when otherwise"
 
 ## Notes
 
