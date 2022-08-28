@@ -5,7 +5,6 @@ import org.apache.spark.sql.functions._
 
 object DFSort {
   def main(args: Array[String]): Unit = {
-
     val spark = SparkSession
       .builder()
       .appName("Spark DataFrame sort example")

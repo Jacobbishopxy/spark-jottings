@@ -90,6 +90,8 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 - [DFPivotAndUnpivot](./src/main/scala/example/DFPivotAndUnpivot.scala): pivot and unpivot
 - [DFGroupBy](./src/main/scala/example/DFGroupBy.scala): `groupBy` and its methods
 - [DFSort](./src/main/scala/example/DFSort.scala): `sort` and `orderBy`
+- [DFJoin](./src/main/scala/example/DFJoin.scala): `join`
+- [DFUnion](./src/main/scala/example/DFUnion.scala): `union` and `unionAll`
 
 ## Notes
 
