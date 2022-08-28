@@ -87,6 +87,7 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 - [DFWithColumn](./src/main/scala/example/DFWithColumn.scala): `withColumn` function
 - [DFWhereFilter](./src/main/scala/example/DFWhereFilter.scala): `filter` & `where` clauses
 - [DFWhen](./src/main/scala/example/DFWhen.scala): "case when" and "when otherwise"
+- [DFPivotAndUnpivot](./src/main/scala/example/DFPivotAndUnpivot.scala): pivot and unpivot
 
 ## Notes
 

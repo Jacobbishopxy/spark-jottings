@@ -8,10 +8,10 @@ object DFWhen {
 
     val spark = SparkSession
       .builder()
-      .appName("Spark DataFrame filter and where example")
+      .appName("Spark DataFrame when example")
       .getOrCreate()
 
-    // TODO
+    process(spark)
 
     spark.stop()
   }
