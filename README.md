@@ -93,6 +93,7 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 - [DFJoin](./src/main/scala/example/DFJoin.scala): `join`
 - [DFUnion](./src/main/scala/example/DFUnion.scala): `union` and `unionAll`
 - [DFMap](./src/main/scala/example/DFMap.scala): `map` and `mapPartitions`
+- [DFCacheAndPersist](./src/main/scala/example/DFCacheAndPersist.scala): `cache` and `persist`
 
 ## Notes
 
@@ -103,3 +104,4 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 - [Running Apache Spark on Kubernetes](https://medium.com/empathyco/running-apache-spark-on-kubernetes-2e64c73d0bb2)
 - [Apache Spark: Differences between client and cluster deploy modes](https://stackoverflow.com/questions/37027732/apache-spark-differences-between-client-and-cluster-deploy-modes)
 - [Spark Scala examples](https://github.com/spark-examples/spark-scala-examples)
+- [Correct way of using _cache()_ and _unpersist()_](https://www.freesion.com/article/98821125948/)
