@@ -95,6 +95,7 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 - [DFMap](./src/main/scala/example/DFMap.scala): `map` and `mapPartitions`
 - [DFCacheAndPersist](./src/main/scala/example/DFCacheAndPersist.scala): `cache` and `persist`
 - [SqlUDF](./src/main/scala/example/SqlUDF.scala): UDF
+- [DFArrayAndMap](./src/main/scala/example/DFArrayAndMap.scala): `ArrayType` and `MapType`
 
 ## Notes
 
