@@ -94,6 +94,7 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 - [DFUnion](./src/main/scala/example/DFUnion.scala): `union` and `unionAll`
 - [DFMap](./src/main/scala/example/DFMap.scala): `map` and `mapPartitions`
 - [DFCacheAndPersist](./src/main/scala/example/DFCacheAndPersist.scala): `cache` and `persist`
+- [SqlUDF](./src/main/scala/example/SqlUDF.scala): UDF
 
 ## Notes
 
