@@ -23,8 +23,8 @@ send-conf:
 kill-all:
 	spark-submit \
 		--master k8s://${MASTER_ADDR} \
-		--name ${JOB_NAME} \
-		--kill spark:${JOB_NAME}
+		--name tmp-job \
+		--kill spark:tmp-job
 
 test-standalone-mode-job1:
 	spark-submit \
@@ -32,7 +32,7 @@ test-standalone-mode-job1:
 		--class jotting.simple.Job1 \
 		${APP_DIR}
 
-# TODO: temporary unavailable 
+# TODO: temporary unavailable
 # BUG: `Caused by: javax.security.auth.login.LoginException: java.lang.NullPointerException: invalid null input: name`
 # -- Spark cluster mode
 # -- MinIO used
@@ -40,7 +40,7 @@ test-cluster-mode-job1:
 	spark-submit \
 		--master k8s://${MASTER_ADDR} \
 		--deploy-mode cluster \
-		--name ${JOB_NAME} \
+		--name job1 \
 		--class jotting.simple.Job1 \
 		--packages org.apache.hadoop:hadoop-aws:3.3.4 \
 		--conf spark.kubernetes.file.upload.path=s3a://${S3_BUCKET} \
@@ -60,12 +60,13 @@ test-cluster-mode-job1:
 # -- nfs share used
 test-client-mode-job1:
 	kubectl run \
-		--namespace ${K8S_NAMESPACE} ${JOB_NAME} \
+		--namespace ${K8S_NAMESPACE} job1 \
 		--rm \
 		--tty -i \
-		--restart='Never' \
+		--restart Never \
 		--image ${K8S_CONTAINER_IMAGE} \
-		-- spark-submit \
+		-- \
+		spark-submit \
 		--master ${SPARK_ADDR} \
 		--deploy-mode cluster \
 		--class jotting.simple.Job1 \
@@ -76,23 +77,24 @@ test-standalone-mode-job2:
 		--master local[4] \
 		--class jotting.simple.Job2 \
 		--packages com.typesafe:config:1.4.2 \
-		--jars ${DEPS_DIR} \
+		--conf spark.driver.extraLibraryPath=${DEPS_DIR} \
 		${APP_DIR}
 
 # NOTE:
 # `--files` & `--jars` require `make send-conf` & `make send-jars`, respectfully
 test-client-mode-job2:
 	kubectl run \
-		--namespace ${K8S_NAMESPACE} ${JOB_NAME} \
+		--namespace ${K8S_NAMESPACE} job2 \
 		--rm \
 		--tty -i \
-		--restart='Never' \
+		--restart Never \
 		--image ${K8S_CONTAINER_IMAGE} \
-		-- spark-submit \
+		-- \
+		spark-submit \
 		--master ${SPARK_ADDR} \
 		--deploy-mode cluster \
 		--files ${SHARE_FILES} \
 		--packages com.typesafe:config:1.4.2 \
-		--jars ${SHARE_JARS} \
+		--driver-library-path ${SHARE_JARS} \
 		--class jotting.simple.Job2 \
 		${SHARE_APP}

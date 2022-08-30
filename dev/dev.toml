@@ -1,0 +1,78 @@
+
+env_files = [
+  "./.env"
+]
+
+[env]
+
+[tasks.test-script]
+script = '''
+echo ${MASTER_ADDR}
+echo args: ${@}
+'''
+
+[tasks.cluster_info]
+command = "kubectl"
+args = ["cluster-info"]
+
+
+[tasks.sbt-package]
+script = [
+  "cd ..",
+  "sbt package"
+]
+
+[tasks.sbt-assembly]
+script = [
+  "cd ..",
+  "sbt assembly"
+]
+
+# cargo make --makefile dev.toml send-app
+[tasks.send-app]
+command = "scp"
+args = [
+  "-rp",
+  "${APP_DIR}",
+  "${SHARE_ADDR}"
+]
+dependencies = ["sbt-package"]
+
+# cargo make --makefile dev.toml send-conf
+[tasks.send-conf]
+command = "scp"
+args = [
+  "-rp",
+  "${CONF_DIR}",
+  "${SHARE_ADDR}"
+]
+
+# cargo make --makefile dev.toml send-deps
+[tasks.send-deps]
+command = "scp"
+args = [
+  "-rp",
+  "${DEPS_DIR}",
+  "${SHARE_ADDR}"
+]
+
+# cargo make --makefile dev.toml daily_raw_data_transfer jotting.task.SaveProductValuation -e JOB_NAME=transfer-test
+[tasks.daily_raw_data_transfer]
+env = { JOB_NAME = "tmp-job" }
+script = '''
+kubectl run \
+  --namespace ${K8S_NAMESPACE} ${JOB_NAME} \
+  --rm \
+  --tty -i \
+  --restart Never \
+  --image ${K8S_CONTAINER_IMAGE} \
+  -- \
+  spark-submit \
+  --master ${SPARK_ADDR} \
+  --deploy-mode cluster \
+  --files ${SHARE_FILES} \
+  --packages com.typesafe:config:1.4.2 \
+  --conf spark.driver.extraLibraryPath=${SHARE_JARS} \
+  --class ${CLASS_NAME} \
+  ${SHARE_APP}
+'''
