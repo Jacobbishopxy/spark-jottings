@@ -100,9 +100,10 @@ object Job2 {
     println("============================================================================")
     println("start reading")
     val df =
-      spark.read.format("jdbc").options(conn.options).option("dbtable", "SELECT * FROM dev").load()
+      spark.read.format("jdbc").options(conn.options).option("query", "SELECT * FROM dev").load()
 
-    println(df)
+    df.printSchema()
+    df.show()
 
     println("============================================================================")
     println("end reading")

@@ -56,9 +56,8 @@ args = [
   "${SHARE_ADDR}"
 ]
 
-# cargo make --makefile dev.toml daily_raw_data_transfer jotting.task.SaveProductValuation -e JOB_NAME=transfer-test
+# cargo make -e JOB_NAME=transfer-test -e CLASS_NAME=jotting.task.SaveProductValuation --makefile dev.toml daily_raw_data_transfer
 [tasks.daily_raw_data_transfer]
-env = { JOB_NAME = "tmp-job" }
 script = '''
 kubectl run \
   --namespace ${K8S_NAMESPACE} ${JOB_NAME} \
@@ -72,7 +71,7 @@ kubectl run \
   --deploy-mode cluster \
   --files ${SHARE_FILES} \
   --packages com.typesafe:config:1.4.2 \
-  --conf spark.driver.extraLibraryPath=${SHARE_JARS} \
+  --jars ${SHARE_JARS_MYSQL},${SHARE_JARS_POSTGRES} \
   --class ${CLASS_NAME} \
   ${SHARE_APP}
 '''

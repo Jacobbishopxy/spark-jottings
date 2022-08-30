@@ -95,6 +95,6 @@ test-client-mode-job2:
 		--deploy-mode cluster \
 		--files ${SHARE_FILES} \
 		--packages com.typesafe:config:1.4.2 \
-		--driver-library-path ${SHARE_JARS} \
+		--jars ${SHARE_JARS_POSTGRES} \
 		--class jotting.simple.Job2 \
 		${SHARE_APP}
