@@ -103,6 +103,7 @@ Client mode means using [bitnami/charts](https://github.com/bitnami/charts/tree/
 
 ## Materials
 
+- [Bitnami Spark Demo](https://docs.bitnami.com/tutorials/process-data-spark-kubernetes/#step-2-deploy-apache-spark-on-kubernetes-using-the-shared-volume)
 - [Running Apache Spark on Kubernetes](https://medium.com/empathyco/running-apache-spark-on-kubernetes-2e64c73d0bb2)
 - [Apache Spark: Differences between client and cluster deploy modes](https://stackoverflow.com/questions/37027732/apache-spark-differences-between-client-and-cluster-deploy-modes)
 - [Spark Scala examples](https://github.com/spark-examples/spark-scala-examples)

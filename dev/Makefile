@@ -98,3 +98,20 @@ test-client-mode-job2:
 		--jars ${SHARE_JARS_POSTGRES} \
 		--class jotting.simple.Job2 \
 		${SHARE_APP}
+
+test-client-mode-job3:
+	kubectl run \
+		--namespace ${K8S_NAMESPACE} job3 \
+		--rm \
+		--tty -i \
+		--restart Never \
+		--image ${K8S_CONTAINER_IMAGE} \
+		-- \
+		spark-submit \
+		--master ${SPARK_ADDR} \
+		--deploy-mode cluster \
+		--files ${SHARE_FILES} \
+		--packages com.typesafe:config:1.4.2 \
+		--jars ${SHARE_JARS_POSTGRES} \
+		--class jotting.simple.Job3 \
+		${SHARE_APP}

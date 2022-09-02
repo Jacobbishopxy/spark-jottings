@@ -7,6 +7,7 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.types.StructField
 import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.functions.to_date
 
 import jotting.Jotting._
 
@@ -79,8 +80,20 @@ object Job2 {
   }
 
   private def runJdbcDatasetWrite(conn: Conn)(implicit spark: SparkSession): Unit = {
-    val data = Seq(("Java", "20000"), ("Python", "100000"), ("Scala", "3000"))
-    val df   = spark.createDataFrame(data).toDF("language", "users_count")
+    import spark.implicits._
+
+    val data = Seq(
+      ("2010-01-23", "Java", "20000"),
+      ("2010-01-23", "Python", "100000"),
+      ("2010-01-23", "Scala", "3000"),
+      ("2015-08-15", "Java", "25000"),
+      ("2015-08-15", "Python", "150000"),
+      ("2015-08-15", "Scala", "2000")
+    )
+    val df = spark
+      .createDataFrame(data)
+      .toDF("date", "language", "users_count")
+      .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
     println("============================================================================")
     println("start writing")
