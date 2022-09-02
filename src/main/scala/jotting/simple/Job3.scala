@@ -33,21 +33,18 @@ object Job3 {
       config.getString("password")
     )
 
-    // runJdbcDatasetWrite(conn)
-    runJdbcDatasetUpsert(conn)
+    args.toList match {
+      case "write" :: _         => runJdbcDatasetWrite(conn)
+      case "addConstraint" :: _ => runJdbcAddConstraint(conn)
+      case "upsert" :: _        => runJdbcDatasetUpsert(conn)
+      case _                    => throw new Exception("Argument is required")
+    }
 
     spark.stop()
   }
 
   val save_to = "job3"
 
-  // TODO:
-  // automation: save table then alter table:
-  // ALTER TABLE
-  //   job3
-  // ADD CONSTRAINT
-  //   date_language
-  // UNIQUE (date, language)
   private def runJdbcDatasetWrite(conn: Conn)(implicit spark: SparkSession): Unit = {
     import spark.implicits._
 
@@ -71,6 +68,21 @@ object Job3 {
       .mode("overwrite")
       .save()
 
+    MyJdbcUtils.addUniqueConstraint(
+      save_to,
+      s"${save_to}_date_language",
+      Seq("date", "language"),
+      new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
+    )
+  }
+
+  private def runJdbcAddConstraint(conn: Conn)(implicit spark: SparkSession): Unit = {
+    MyJdbcUtils.addUniqueConstraint(
+      save_to,
+      s"${save_to}_date_language",
+      Seq("date", "language"),
+      new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
+    )
   }
 
   private def runJdbcDatasetUpsert(conn: Conn)(implicit spark: SparkSession): Unit = {
@@ -100,13 +112,27 @@ object Job3 {
 
     implicit def myJdbcToJdbc(jdbcUtils: JdbcUtils.type) = MyJdbcUtils
 
+    // val upsertStatement = """
+    // insert into
+    //   nft_hold as hold (address, contract, count, batch)
+    // values
+    //   (?,?,?,?)
+    // on conflict
+    //   (address, contract)
+    // do update set
+    //   count = hold.count + excluded.count,
+    //   batch = excluded.batch
+    // where
+    //   hold.batch != excluded.batch
+    // """
+
     val jdbcOptions = new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
     JdbcUtils.upsertTable(
       df,
       df0.schema,
       false,
-      jdbcOptions,
-      Seq("date", "language")
+      Seq("date", "language"),
+      jdbcOptions
     )
   }
 
