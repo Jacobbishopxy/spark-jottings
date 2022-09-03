@@ -7,30 +7,54 @@ import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils
 import org.apache.spark.sql.jdbc.JdbcDialects
 import org.apache.spark.sql.types.StructType
 
-object MyJdbcUtils {
+class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) {
 
-  /** @param df
+  import MyJdbcUtils._
+
+  lazy val connection = connectionOpt.getOrElse(
+    JdbcDialects
+      .get(conn.url)
+      .createConnectionFactory(new JdbcOptionsInWrite(conn.options))(-1)
+  )
+  lazy val jdbcOptions = new JdbcOptionsInWrite(conn.options)
+  lazy val dialect     = JdbcDialects.get(jdbcOptions.url)
+
+  private def jdbcOptionsAddOptions(params: (String, String)*): JdbcOptionsInWrite = {
+    val op = params.foldLeft(conn.options) { (acc, ele) =>
+      acc + (ele._1 -> ele._2)
+    }
+
+    new JdbcOptionsInWrite(op)
+  }
+
+  private def jdbcOptionsAddTable(table: String): JdbcOptionsInWrite = {
+    jdbcOptionsAddOptions(("dbtable", table))
+  }
+
+  private def jdbcOptionsAddTruncateTable(
+      table: String,
+      cascade: Boolean = false
+  ): JdbcOptionsInWrite = {
+    jdbcOptionsAddOptions(("dbtable", table), ("cascadeTruncate", cascade.toString()))
+  }
+
+  /** Raw statement for saving a DataFrame
+    *
+    * @param df
     * @param statement
     * @param options
-    *   key like "columnName1" or key combination string like "columnName1,columnName2", all keys
-    *   must have unique constrains
     */
   def runStatement(
       df: DataFrame,
       statement: String,
       options: JdbcOptionsInWrite
   ): Unit = {
-
-    // Listing out all the variables who is required by `.rdd.foreachPartition` closure
-    // Otherwise, it will encounter a failed to broadcast variables issue.
     val url            = options.url
     val table          = options.table
     val updateSchema   = df.schema
-    val dialect        = JdbcDialects.get(url)
     val batchSize      = options.batchSize
     val isolationLevel = options.isolationLevel
 
-    // System.out.println(s"upsertStmt $statement")
     val repartitionedDF = options.numPartitions match {
       case Some(n) if n < df.rdd.getNumPartitions => df.coalesce(n)
       case _                                      => df
@@ -50,39 +74,31 @@ object MyJdbcUtils {
     }
   }
 
-  object UpsertAction extends Enumeration {
-    type UpsertAction = Value
-    val DoNothing, DoUpdate = Value
-  }
-
-  /** @param table
+  /** Generate an upsert SQL statement.
+    *
+    * Currently, only supports MySQL & PostgreSQL
+    *
+    * @param table
     * @param tableSchema
     * @param isCaseSensitive
     * @param conflictColumns
     * @param conflictAction
-    * @param options
-    *   Returns an Insert SQL statement for inserting a row into the target table via JDBC conn.
+    * @return
     */
-  private def getUpsertStatement(
+  private def generateUpsertStatement(
       table: String,
       tableSchema: StructType,
       isCaseSensitive: Boolean,
       conflictColumns: Seq[String],
-      conflictAction: UpsertAction.Value,
-      options: JdbcOptionsInWrite
+      conflictAction: UpsertAction.Value
   ): String = {
     val columnNameEquality = if (isCaseSensitive) {
       org.apache.spark.sql.catalyst.analysis.caseSensitiveResolution
     } else {
       org.apache.spark.sql.catalyst.analysis.caseInsensitiveResolution
     }
-    // The generated insert statement needs to follow rddSchema's column sequence and
-    // tableSchema's column names. When appending data into some case-sensitive DBMSs like
-    // PostgreSQL/Oracle, we need to respect the existing case-sensitive column names instead of
-    // RDD column names for user convenience.
     val tableColumnNames  = tableSchema.fieldNames
     val tableSchemaFields = tableSchema.fields
-    val dialect           = JdbcDialects.get(options.url)
 
     val columns = tableSchemaFields
       .map { col =>
@@ -100,7 +116,7 @@ object MyJdbcUtils {
       .map(_ => "?")
       .mkString(",")
 
-    (options.driverClass, conflictAction) match {
+    (jdbcOptions.driverClass, conflictAction) match {
       case ("org.postgresql.Driver", UpsertAction.DoUpdate) =>
         val updateSet = tableColumnNames
           .filterNot(conflictColumns.contains(_))
@@ -155,54 +171,63 @@ object MyJdbcUtils {
         ON DUPLICATE KEY UPDATE
           $updateSet
         """
-      case _ => throw new Exception("""
-        Unsupported driver, upsert method only works on:
-          org.postgresql.Driver,
-          com.mysql.jdbc.Driver
-      """)
+      case _ =>
+        throw new Exception(
+          "Unsupported driver, upsert method only works on: org.postgresql.Driver/com.mysql.jdbc.Driver"
+        )
     }
 
   }
 
-  /** @param df
-    * @param tableSchema
+  /** Upsert table.
+    *
+    * Make sure the input DataFrame has the same schema as the database table. Also, unique
+    * constraint must be set before calling this method.
+    *
+    * @param df
+    * @param table
     * @param isCaseSensitive
     * @param conflictColumns
-    * @param options
-    *   key like "columnName1" or key combination string like "columnName1,columnName2", all keys
-    *   must have unique constrains
+    * @param conflictAction
     */
   def upsertTable(
       df: DataFrame,
-      tableSchema: StructType,
+      table: String,
       isCaseSensitive: Boolean,
       conflictColumns: Seq[String],
-      conflictAction: UpsertAction.Value,
-      options: JdbcOptionsInWrite
+      conflictAction: UpsertAction.Value
   ): Unit = {
-    val upsertStmt = getUpsertStatement(
-      options.table,
-      tableSchema,
+    val upsertStmt = generateUpsertStatement(
+      table,
+      df.schema,
       isCaseSensitive,
       conflictColumns,
-      conflictAction,
-      options
+      conflictAction
     )
 
     runStatement(
       df,
       upsertStmt,
-      options
+      jdbcOptionsAddTable(table)
     )
   }
 
+  /** Upsert table.
+    *
+    * Make sure the input DataFrame has the same schema as the database table.
+    *
+    * @param df
+    * @param table
+    * @param isCaseSensitive
+    * @param conflictColumns
+    * @param conflictAction
+    */
   def upsertTable(
       df: DataFrame,
-      tableSchema: StructType,
+      table: String,
       isCaseSensitive: Boolean,
       conflictColumns: Seq[String],
-      conflictAction: String,
-      options: JdbcOptionsInWrite
+      conflictAction: String
   ): Unit = {
 
     val ca = conflictAction match {
@@ -213,23 +238,19 @@ object MyJdbcUtils {
 
     upsertTable(
       df,
-      tableSchema,
+      table,
       isCaseSensitive,
       conflictColumns,
-      ca,
-      options
+      ca
     )
   }
 
-  private def connect(options: JdbcOptionsInWrite): Connection = {
-    JdbcDialects.get(options.url).createConnectionFactory(options)(-1)
-  }
-
-  def dropUniqueConstraint(
-      table: String,
-      name: String,
-      options: JdbcOptionsInWrite
-  ): Unit = {
+  /** Drop a unique constraint from a table
+    *
+    * @param table
+    * @param name
+    */
+  def dropUniqueConstraint(table: String, name: String): Unit = {
     val query = s"""
     ALTER TABLE
       $table
@@ -237,14 +258,19 @@ object MyJdbcUtils {
       $name
     """
 
-    JdbcUtils.executeQuery(connect(options), options, query)(_ => {})
+    JdbcUtils.executeQuery(connection, jdbcOptions, query)(_ => {})
   }
 
+  /** Create a unique constraint for a table
+    *
+    * @param table
+    * @param name
+    * @param tableColumnNames
+    */
   def addUniqueConstraint(
       table: String,
       name: String,
-      tableColumnNames: Seq[String],
-      options: JdbcOptionsInWrite
+      tableColumnNames: Seq[String]
   ): Unit = {
     val query = s"""
     ALTER TABLE
@@ -255,6 +281,31 @@ object MyJdbcUtils {
       (${tableColumnNames.mkString(",")})
     """
 
-    JdbcUtils.executeQuery(connect(options), options, query)(_ => {})
+    JdbcUtils.executeQuery(connection, jdbcOptions, query)(_ => {})
+  }
+
+  def tableExists(table: String): Boolean =
+    JdbcUtils.tableExists(connection, jdbcOptionsAddTable(table))
+
+  def dropTable(table: String): Unit =
+    JdbcUtils.dropTable(connection, table, jdbcOptions)
+
+  def truncateTable(table: String, cascadeTruncate: Boolean = false): Unit =
+    JdbcUtils.truncateTable(connection, jdbcOptionsAddTruncateTable(table, cascadeTruncate))
+
+  def getSchemaOption(table: String): Option[StructType] = {
+    JdbcUtils.getSchemaOption(connection, jdbcOptionsAddTable(table))
+  }
+
+  // TODO:
+}
+
+object MyJdbcUtils {
+
+  /** Upsert action's enum
+    */
+  object UpsertAction extends Enumeration {
+    type UpsertAction = Value
+    val DoNothing, DoUpdate = Value
   }
 }

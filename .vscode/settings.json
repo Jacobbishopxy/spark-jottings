@@ -2,5 +2,12 @@
 	"files.watcherExclude": {
 		"**/target": true
 	},
-	"cSpell.words": ["bitnami", "cogroup", "jdbc", "unpersist", "unpivot"]
+	"cSpell.words": [
+		"bitnami",
+		"cogroup",
+		"dbtable",
+		"jdbc",
+		"unpersist",
+		"unpivot"
+	]
 }

@@ -16,6 +16,7 @@ import jotting.Jotting._
 import jotting.MyJdbcUtils
 import org.apache.spark.sql.types.DateType
 import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.jdbc.JdbcDialects
 
 object Job3 {
   def main(args: Array[String]): Unit = {
@@ -71,21 +72,25 @@ object Job3 {
       .mode("overwrite")
       .save()
 
-    MyJdbcUtils.addUniqueConstraint(
+    new MyJdbcUtils(conn).addUniqueConstraint(
       save_to,
       s"${save_to}_date_language",
-      Seq("date", "language"),
-      new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
+      Seq("date", "language")
     )
   }
 
   private def runJdbcAddConstraint(conn: Conn)(implicit spark: SparkSession): Unit = {
-    MyJdbcUtils.addUniqueConstraint(
+    new MyJdbcUtils(conn).addUniqueConstraint(
       save_to,
       s"${save_to}_date_language",
-      Seq("date", "language"),
-      new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
+      Seq("date", "language")
     )
+  }
+
+  private def runJdbcAddIndex(conn: Conn)(implicit spark: SparkSession): Unit = {
+    //
+
+    // JdbcUtils.createIndex()
   }
 
   private def runJdbcDatasetUpsert(conn: Conn)(implicit spark: SparkSession): Unit = {
@@ -110,16 +115,12 @@ object Job3 {
       .toDF("date", "language", "users_count")
       .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
-    implicit def myJdbcToJdbc(jdbcUtils: JdbcUtils.type) = MyJdbcUtils
-
-    val jdbcOptions = new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
-    JdbcUtils.upsertTable(
+    new MyJdbcUtils(conn).upsertTable(
       df,
-      schema,
+      save_to,
       false,
       Seq("date", "language"),
-      "doUpdate",
-      jdbcOptions
+      "doUpdate"
     )
   }
 
