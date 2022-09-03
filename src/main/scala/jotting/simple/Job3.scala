@@ -13,6 +13,9 @@ import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils
 import org.apache.spark.sql.execution.datasources.jdbc.JdbcOptionsInWrite
 
 import jotting.Jotting._
+import jotting.MyJdbcUtils
+import org.apache.spark.sql.types.DateType
+import org.apache.spark.sql.types.IntegerType
 
 object Job3 {
   def main(args: Array[String]): Unit = {
@@ -49,12 +52,12 @@ object Job3 {
     import spark.implicits._
 
     val data = Seq(
-      ("2010-01-23", "Java", "20000"),
-      ("2010-01-23", "Python", "100000"),
-      ("2010-01-23", "Scala", "3000"),
-      ("2015-08-15", "Java", "25000"),
-      ("2015-08-15", "Python", "150000"),
-      ("2015-08-15", "Scala", "2000")
+      ("2010-01-23", "Java", 20000),
+      ("2010-01-23", "Python", 100000),
+      ("2010-01-23", "Scala", 3000),
+      ("2015-08-15", "Java", 25000),
+      ("2015-08-15", "Python", 150000),
+      ("2015-08-15", "Scala", 2000)
     )
     val df = spark
       .createDataFrame(data)
@@ -88,22 +91,19 @@ object Job3 {
   private def runJdbcDatasetUpsert(conn: Conn)(implicit spark: SparkSession): Unit = {
     import spark.implicits._
 
-    val data0 = Seq(
-      ("2010-01-23", "Java", "20000")
-    )
-    val df0 = spark
-      .createDataFrame(data0)
-      .toDF("date", "language", "users_count")
-      .withColumn("date", to_date($"date", "yyyy-MM-dd"))
+    val schema = new StructType()
+      .add("date", DateType)
+      .add("language", StringType)
+      .add("users_count", IntegerType)
 
     val data = Seq(
-      ("2010-01-23", "Java", "20000", "21000"),
-      ("2010-01-23", "Python", "100000", "100000"),
-      ("2010-01-23", "Scala", "3000", "15000"),
-      ("2015-08-15", "Java", "25000", "24000"),
-      ("2015-08-15", "Python", "150000", "135000"),
-      ("2015-08-15", "Scala", "2000", "2200"),
-      ("2015-08-15", "Rust", "1000", "1000")
+      ("2010-01-23", "Java", 20000, 21000),
+      ("2010-01-23", "Python", 100000, 100000),
+      ("2010-01-23", "Scala", 3000, 15000),
+      ("2015-08-15", "Java", 25000, 24000),
+      ("2015-08-15", "Python", 150000, 135000),
+      ("2015-08-15", "Scala", 2000, 2200),
+      ("2015-08-15", "Rust", 1000, 1000)
     )
     val df = spark
       .createDataFrame(data)
@@ -112,24 +112,19 @@ object Job3 {
 
     implicit def myJdbcToJdbc(jdbcUtils: JdbcUtils.type) = MyJdbcUtils
 
-    // val upsertStatement = """
-    // insert into
-    //   nft_hold as hold (address, contract, count, batch)
-    // values
-    //   (?,?,?,?)
-    // on conflict
-    //   (address, contract)
-    // do update set
-    //   count = hold.count + excluded.count,
-    //   batch = excluded.batch
-    // where
-    //   hold.batch != excluded.batch
-    // """
+    // INSERT INTO
+    //   job3 ("date","language","users_count")
+    // VALUES
+    //   (?,?,?)
+    // ON CONFLICT
+    //   ("date","language")
+    // DO UPDATE SET
+    //   ("users_count") = ROW(?)
 
     val jdbcOptions = new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
     JdbcUtils.upsertTable(
       df,
-      df0.schema,
+      schema,
       false,
       Seq("date", "language"),
       jdbcOptions

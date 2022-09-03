@@ -1,4 +1,4 @@
-package jotting.simple
+package jotting
 
 import java.sql.Connection
 import org.apache.spark.sql.DataFrame
@@ -30,11 +30,12 @@ object MyJdbcUtils {
     val batchSize      = options.batchSize
     val isolationLevel = options.isolationLevel
 
-    System.out.println(s"upsertStmt $statement")
+    // System.out.println(s"upsertStmt $statement")
     val repartitionedDF = options.numPartitions match {
       case Some(n) if n < df.rdd.getNumPartitions => df.coalesce(n)
       case _                                      => df
     }
+
     repartitionedDF.rdd.foreachPartition { iterator =>
       JdbcUtils.savePartition(
         table,
