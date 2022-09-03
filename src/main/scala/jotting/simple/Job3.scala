@@ -40,7 +40,7 @@ object Job3 {
       case "write" :: _         => runJdbcDatasetWrite(conn)
       case "addConstraint" :: _ => runJdbcAddConstraint(conn)
       case "upsert" :: _        => runJdbcDatasetUpsert(conn)
-      case _                    => throw new Exception("Argument is required")
+      case _ => throw new Exception("Argument (write/addConstraint/upsert) is required")
     }
 
     spark.stop()
@@ -97,29 +97,20 @@ object Job3 {
       .add("users_count", IntegerType)
 
     val data = Seq(
-      ("2010-01-23", "Java", 20000, 21000),
-      ("2010-01-23", "Python", 100000, 100000),
-      ("2010-01-23", "Scala", 3000, 15000),
-      ("2015-08-15", "Java", 25000, 24000),
-      ("2015-08-15", "Python", 150000, 135000),
-      ("2015-08-15", "Scala", 2000, 2200),
-      ("2015-08-15", "Rust", 1000, 1000)
+      ("2010-01-23", "Java", 21000),
+      ("2010-01-23", "Python", 100000),
+      ("2010-01-23", "Scala", 15000),
+      ("2015-08-15", "Java", 24000),
+      ("2015-08-15", "Python", 135000),
+      ("2015-08-15", "Scala", 2200),
+      ("2015-08-15", "Rust", 1000)
     )
     val df = spark
       .createDataFrame(data)
-      .toDF("date", "language", "users_count", "users_count")
+      .toDF("date", "language", "users_count")
       .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
     implicit def myJdbcToJdbc(jdbcUtils: JdbcUtils.type) = MyJdbcUtils
-
-    // INSERT INTO
-    //   job3 ("date","language","users_count")
-    // VALUES
-    //   (?,?,?)
-    // ON CONFLICT
-    //   ("date","language")
-    // DO UPDATE SET
-    //   ("users_count") = ROW(?)
 
     val jdbcOptions = new JdbcOptionsInWrite(conn.options + ("dbtable" -> save_to))
     JdbcUtils.upsertTable(
@@ -127,6 +118,7 @@ object Job3 {
       schema,
       false,
       Seq("date", "language"),
+      "doUpdate",
       jdbcOptions
     )
   }
