@@ -76,6 +76,7 @@ kubectl run \
   ${SHARE_APP}
 '''
 
+# cargo make --makefile dev.toml job3 write
 [tasks.job3]
 script = '''
 kubectl run \

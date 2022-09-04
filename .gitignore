@@ -72,3 +72,4 @@ project/**/metals.sbt
 .DS_Store
 
 src/main/resources/application.conf
+dev/.env
