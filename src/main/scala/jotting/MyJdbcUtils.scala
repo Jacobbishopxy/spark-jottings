@@ -8,6 +8,8 @@ import org.apache.spark.sql.jdbc.JdbcDialects
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.connector.catalog.TableChange
 import org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions
+import org.apache.spark.sql.connector.expressions.NamedReference
+import org.apache.spark.sql.connector.catalog.index.TableIndex
 
 class MyJdbcUtils(conn: Jotting.Conn) {
 
@@ -338,6 +340,13 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     )
   }
 
+  /** Execute a raw SQL statement
+    *
+    * @param conn
+    * @param options
+    * @param sql
+    * @param f
+    */
   private def executeUpdate(
       conn: Connection,
       options: JDBCOptions,
@@ -367,7 +376,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     """
     val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    executeUpdate(co.connection, co.options, query)(_ => {})
+    executeUpdate(co.conn, co.opt, query)(_ => {})
   }
 
   /** Create a unique constraint for a table
@@ -391,7 +400,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     """
     val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    executeUpdate(co.connection, co.options, query)(_ => {})
+    executeUpdate(co.conn, co.opt, query)(_ => {})
   }
 
   /** Delete data from a table
@@ -405,7 +414,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     """
     val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    executeUpdate(co.connection, co.options, query)(_ => {})
+    executeUpdate(co.conn, co.opt, query)(_ => {})
   }
 
   /** Check if a table exists
@@ -416,7 +425,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   def tableExists(table: String): Boolean = {
     val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    JdbcUtils.tableExists(co.connection, co.options)
+    JdbcUtils.tableExists(co.conn, co.opt)
   }
 
   /** Drop a table
@@ -426,7 +435,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   def dropTable(table: String): Unit = {
     val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    JdbcUtils.dropTable(co.connection, table, co.options)
+    JdbcUtils.dropTable(co.conn, table, co.opt)
   }
 
   /** Truncate a table
@@ -437,7 +446,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   def truncateTable(table: String, cascadeTruncate: Boolean = false): Unit = {
     val co = genConnOpt(jdbcOptionsAddTruncateTable(table, cascadeTruncate))
 
-    JdbcUtils.truncateTable(co.connection, co.options)
+    JdbcUtils.truncateTable(co.conn, co.opt)
   }
 
   /** Get a table's schema if it exists
@@ -448,7 +457,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   def getTableSchema(table: String): Option[StructType] = {
     val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    JdbcUtils.getSchemaOption(co.connection, co.options)
+    JdbcUtils.getSchemaOption(co.conn, co.opt)
   }
 
   /** Save a DataFrame to the database in a single transaction
@@ -505,11 +514,11 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       )
     )
     JdbcUtils.createTable(
-      co.connection,
+      co.conn,
       table,
       schema,
       isCaseSensitive,
-      co.options
+      co.opt
     )
   }
 
@@ -519,9 +528,9 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @param newTable
     */
   def renameTable(oldTable: String, newTable: String): Unit = {
-    val c = genConnOpt()
+    val co = genConnOpt()
 
-    JdbcUtils.renameTable(c.connection, oldTable, newTable, c.options)
+    JdbcUtils.renameTable(co.conn, oldTable, newTable, co.opt)
   }
 
   /** Update a table from the JDBC database
@@ -530,24 +539,137 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @param changes
     */
   def alterTable(table: String, changes: Seq[TableChange]): Unit = {
-    val c = genConnOpt()
+    val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    JdbcUtils.alterTable(c.connection, table, changes, c.options)
+    JdbcUtils.alterTable(co.conn, table, changes, co.opt)
   }
-  // TODO:
-  // createSchema
-  // schemaExists
-  // listSchemas
-  // alterSchemaComment
-  // removeSchemaComment
-  // dropSchema
 
-  // TODO:
-  // createIndex
-  // indexExists
-  // dropIndex
-  // listIndexes
-  // checkIfIndexExists
+  /** Create a schema
+    *
+    * @param schema
+    * @param comment
+    */
+  def createSchema(schema: String, comment: String): Unit = {
+    val co = genConnOpt()
+
+    JdbcUtils.createSchema(co.conn, co.opt, schema, comment)
+  }
+
+  /** Check a schema if exists
+    *
+    * @param schema
+    * @return
+    */
+  def schemaExists(schema: String): Boolean = {
+    val co = genConnOpt()
+
+    JdbcUtils.schemaExists(co.conn, co.opt, schema)
+  }
+
+  /** List all schema
+    *
+    * @return
+    */
+  def listSchemas(): Array[Array[String]] = {
+    val co = genConnOpt()
+
+    JdbcUtils.listSchemas(co.conn, co.opt)
+  }
+
+  /** Alter a schema's comment
+    *
+    * @param schema
+    * @param comment
+    */
+  def alterSchemaComment(schema: String, comment: String): Unit = {
+    val co = genConnOpt()
+
+    JdbcUtils.alterSchemaComment(co.conn, co.opt, schema, comment)
+  }
+
+  /** Remove a schema's comment
+    *
+    * @param schema
+    */
+  def removeSchemaComment(schema: String): Unit = {
+    val co = genConnOpt()
+
+    JdbcUtils.removeSchemaComment(co.conn, co.opt, schema)
+  }
+
+  /** Drop a schema
+    *
+    * @param schema
+    * @param cascade
+    */
+  def dropSchema(schema: String, cascade: Boolean): Unit = {
+    val co = genConnOpt()
+
+    JdbcUtils.dropSchema(co.conn, co.opt, schema, cascade)
+  }
+
+  /** Create an index
+    *
+    * @param table
+    * @param index
+    * @param columns
+    * @param columnsProperties
+    * @param properties
+    */
+  def createIndex(
+      table: String,
+      index: String,
+      columns: Array[NamedReference],
+      columnsProperties: java.util.Map[NamedReference, java.util.Map[String, String]],
+      properties: java.util.Map[String, String]
+  ): Unit = {
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    JdbcUtils.createIndex(
+      co.conn,
+      index,
+      table,
+      columns,
+      columnsProperties,
+      properties,
+      co.opt
+    )
+  }
+
+  /** Check an index if exists
+    *
+    * @param table
+    * @param index
+    * @return
+    */
+  def indexExists(table: String, index: String): Boolean = {
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    JdbcUtils.indexExists(co.conn, index, table, co.opt)
+  }
+
+  /** Drop an index
+    *
+    * @param table
+    * @param index
+    */
+  def dropIndex(table: String, index: String): Unit = {
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    JdbcUtils.dropIndex(co.conn, index, table, co.opt)
+  }
+
+  /** List indices from a table
+    *
+    * @param table
+    * @return
+    */
+  def listIndexes(table: String): Array[TableIndex] = {
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    JdbcUtils.listIndexes(co.conn, table, co.opt)
+  }
+
 }
 
 object MyJdbcUtils {
@@ -559,5 +681,5 @@ object MyJdbcUtils {
     val DoNothing, DoUpdate = Value
   }
 
-  case class ConnectionOptions(connection: Connection, options: JdbcOptionsInWrite)
+  case class ConnectionOptions(conn: Connection, opt: JdbcOptionsInWrite)
 }

@@ -70,3 +70,5 @@ project/**/metals.sbt
 
 .bsp
 .DS_Store
+
+src/main/resources/application.conf

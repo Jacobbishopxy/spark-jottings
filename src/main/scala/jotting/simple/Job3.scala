@@ -28,7 +28,7 @@ object Job3 {
       .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
       .getOrCreate()
 
-    val config: Config = ConfigFactory.load(configFile).getConfig("job2")
+    val config: Config = ConfigFactory.load(configFile).getConfig("job")
     val conn = Conn(
       config.getString("db"),
       config.getString("driver"),

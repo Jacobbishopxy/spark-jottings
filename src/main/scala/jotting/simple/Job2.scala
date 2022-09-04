@@ -20,7 +20,7 @@ object Job2 {
       // .config("spark.some.config.option", "some-value")
       .getOrCreate()
 
-    val config: Config = ConfigFactory.load(configFile).getConfig("job2")
+    val config: Config = ConfigFactory.load(configFile).getConfig("job")
     val conn = Conn(
       config.getString("db"),
       config.getString("driver"),
