@@ -18,6 +18,8 @@ import org.apache.spark.sql.types.DateType
 import org.apache.spark.sql.types.IntegerType
 import org.apache.spark.sql.jdbc.JdbcDialects
 
+/** Test cases for verifying MyJdbcUtils' correctness
+  */
 object Job3 {
   def main(args: Array[String]): Unit = {
     implicit val spark = SparkSession
@@ -38,10 +40,12 @@ object Job3 {
     )
 
     args.toList match {
-      case "write" :: _         => runJdbcDatasetWrite(conn)
-      case "addConstraint" :: _ => runJdbcAddConstraint(conn)
-      case "upsert" :: _        => runJdbcDatasetUpsert(conn)
-      case _ => throw new Exception("Argument (write/addConstraint/upsert) is required")
+      case "write" :: _          => runJdbcDatasetWrite(conn)
+      case "addConstraint" :: _  => runJdbcAddConstraint(conn)
+      case "dropConstraint" :: _ => runJdbcDropConstraint(conn)
+      case "upsert" :: _         => runJdbcDatasetUpsert(conn)
+      case "delete" :: _         => runJdbcDatasetDelete(conn)
+      case _                     => throw new Exception("Argument is required")
     }
 
     spark.stop()
@@ -87,6 +91,13 @@ object Job3 {
     )
   }
 
+  private def runJdbcDropConstraint(conn: Conn)(implicit spark: SparkSession): Unit = {
+    new MyJdbcUtils(conn).dropUniqueConstraint(
+      save_to,
+      s"${save_to}_date_language"
+    )
+  }
+
   private def runJdbcAddIndex(conn: Conn)(implicit spark: SparkSession): Unit = {
     //
 
@@ -118,10 +129,16 @@ object Job3 {
     new MyJdbcUtils(conn).upsertTable(
       df,
       save_to,
+      None,
       false,
       Seq("date", "language"),
       "doUpdate"
     )
+  }
+
+  private def runJdbcDatasetDelete(conn: Conn)(implicit spark: SparkSession): Unit = {
+    val del = "date = '2010-01-23' and language = 'Scala'"
+    new MyJdbcUtils(conn).deleteByConditions(save_to, del)
   }
 
 }

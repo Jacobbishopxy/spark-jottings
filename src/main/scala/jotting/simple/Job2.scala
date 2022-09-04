@@ -95,30 +95,27 @@ object Job2 {
       .toDF("date", "language", "users_count")
       .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
-    println("============================================================================")
-    println("start writing")
-
     // mode:
     // overwrite
     // append
     // ignore
     // error
-    df.write.format("jdbc").options(conn.options).option("dbtable", "dev").mode("overwrite").save()
-
-    println("end writing")
-    println("============================================================================")
+    df.write
+      .format("jdbc")
+      .options(conn.options)
+      .option("dbtable", "dev")
+      .mode("overwrite")
+      .save()
   }
 
   private def runJdbcDatasetRead(conn: Conn)(implicit spark: SparkSession): Unit = {
-    println("============================================================================")
-    println("start reading")
-    val df =
-      spark.read.format("jdbc").options(conn.options).option("query", "SELECT * FROM dev").load()
+    val df = spark.read
+      .format("jdbc")
+      .options(conn.options)
+      .option("query", "SELECT * FROM dev")
+      .load()
 
     df.printSchema()
     df.show()
-
-    println("============================================================================")
-    println("end reading")
   }
 }

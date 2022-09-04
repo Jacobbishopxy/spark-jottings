@@ -31,9 +31,7 @@ object Job1 {
     // Enforce that everything has been calculated and in cache
     pairs1.count()
 
-    print("==========================================================")
     println(pairs1.groupByKey(numReducers).count())
-    print("==========================================================")
 
     spark.stop()
   }

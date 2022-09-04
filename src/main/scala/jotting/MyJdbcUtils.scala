@@ -7,20 +7,20 @@ import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils
 import org.apache.spark.sql.jdbc.JdbcDialects
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.connector.catalog.TableChange
+import org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions
 
-class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) {
+class MyJdbcUtils(conn: Jotting.Conn) {
 
   import MyJdbcUtils._
 
-  lazy val connection = connectionOpt.getOrElse(
-    JdbcDialects
-      .get(conn.url)
-      .createConnectionFactory(new JdbcOptionsInWrite(conn.options))(-1)
-  )
-  lazy val jdbcOptions = new JdbcOptionsInWrite(conn.options)
-  lazy val dialect     = JdbcDialects.get(jdbcOptions.url)
+  lazy val dialect = JdbcDialects.get(conn.url)
 
-  private def jdbcOptionsAddOptions(params: (String, String)*): JdbcOptionsInWrite = {
+  /** Create a JdbcOptions
+    *
+    * @param params
+    * @return
+    */
+  private def genOptions(params: (String, String)*): JdbcOptionsInWrite = {
     val op = params.foldLeft(conn.options) { (acc, ele) =>
       acc + (ele._1 -> ele._2)
     }
@@ -29,13 +29,13 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
   }
 
   private def jdbcOptionsAddTable(table: String): JdbcOptionsInWrite =
-    jdbcOptionsAddOptions(("dbtable", table))
+    genOptions(("dbtable", table))
 
   private def jdbcOptionsAddTruncateTable(
       table: String,
       cascade: Boolean = false
   ): JdbcOptionsInWrite =
-    jdbcOptionsAddOptions(
+    genOptions(
       ("dbtable", table),
       ("cascadeTruncate", cascade.toString())
     )
@@ -65,6 +65,58 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
       tableComment.map(("tableComment" -> _))
 
     new JdbcOptionsInWrite(op)
+  }
+
+  /** Create a connection by extra parameters
+    *
+    * @param params
+    * @return
+    */
+  private def genConn(params: (String, String)*): Connection = {
+    val jdbcOptions = genOptions(params: _*)
+
+    JdbcDialects
+      .get(conn.url)
+      .createConnectionFactory(jdbcOptions)(-1)
+  }
+
+  /** Create a connection by options
+    *
+    * @param options
+    * @return
+    */
+  private def genConn(options: JdbcOptionsInWrite): Connection = {
+    JdbcDialects
+      .get(conn.url)
+      .createConnectionFactory(options)(-1)
+  }
+
+  /** Create a connectionOptions with extra parameters
+    *
+    * @param params
+    * @return
+    */
+  private def genConnOpt(params: (String, String)*): ConnectionOptions = {
+    val jdbcOptions = genOptions(params: _*)
+
+    val connection = JdbcDialects
+      .get(conn.url)
+      .createConnectionFactory(jdbcOptions)(-1)
+
+    ConnectionOptions(connection, jdbcOptions)
+  }
+
+  /** Create a connectionOptions
+    *
+    * @param options
+    * @return
+    */
+  private def genConnOpt(options: JdbcOptionsInWrite): ConnectionOptions = {
+    val connection = JdbcDialects
+      .get(conn.url)
+      .createConnectionFactory(options)(-1)
+
+    ConnectionOptions(connection, options)
   }
 
   /** Raw statement for saving a DataFrame
@@ -109,6 +161,7 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     *
     * @param table
     * @param tableSchema
+    * @param conditions
     * @param isCaseSensitive
     * @param conflictColumns
     * @param conflictAction
@@ -117,6 +170,7 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
   private def generateUpsertStatement(
       table: String,
       tableSchema: StructType,
+      conditions: Option[String],
       isCaseSensitive: Boolean,
       conflictColumns: Seq[String],
       conflictAction: UpsertAction.Value
@@ -145,7 +199,8 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
       .map(_ => "?")
       .mkString(",")
 
-    (jdbcOptions.driverClass, conflictAction) match {
+    val driverClass = genOptions().driverClass
+    val stmt = (driverClass, conflictAction) match {
       case ("org.postgresql.Driver", UpsertAction.DoUpdate) =>
         val updateSet = tableColumnNames
           .filterNot(conflictColumns.contains(_))
@@ -206,6 +261,10 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
         )
     }
 
+    conditions match {
+      case Some(value) => stmt ++ s"\nWHERE $value"
+      case None        => stmt
+    }
   }
 
   /** Upsert table.
@@ -215,6 +274,7 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     *
     * @param df
     * @param table
+    * @param conditions
     * @param isCaseSensitive
     * @param conflictColumns
     * @param conflictAction
@@ -222,6 +282,7 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
   def upsertTable(
       df: DataFrame,
       table: String,
+      conditions: Option[String],
       isCaseSensitive: Boolean,
       conflictColumns: Seq[String],
       conflictAction: UpsertAction.Value
@@ -229,6 +290,7 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     val upsertStmt = generateUpsertStatement(
       table,
       df.schema,
+      conditions,
       isCaseSensitive,
       conflictColumns,
       conflictAction
@@ -247,6 +309,7 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     *
     * @param df
     * @param table
+    * @param conditions
     * @param isCaseSensitive
     * @param conflictColumns
     * @param conflictAction
@@ -254,6 +317,7 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
   def upsertTable(
       df: DataFrame,
       table: String,
+      conditions: Option[String],
       isCaseSensitive: Boolean,
       conflictColumns: Seq[String],
       conflictAction: String
@@ -267,10 +331,26 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     upsertTable(
       df,
       table,
+      conditions,
       isCaseSensitive,
       conflictColumns,
       ca
     )
+  }
+
+  private def executeUpdate(
+      conn: Connection,
+      options: JDBCOptions,
+      sql: String
+  )(f: Int => Unit): Unit = {
+    val statement = conn.createStatement
+    try {
+      statement.setQueryTimeout(options.queryTimeout)
+      val eff = statement.executeUpdate(sql)
+      f(eff)
+    } finally {
+      statement.close()
+    }
   }
 
   /** Drop a unique constraint from a table
@@ -285,8 +365,9 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     DROP CONSTRAINT
       $name
     """
+    val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    JdbcUtils.executeQuery(connection, jdbcOptions, query)(_ => {})
+    executeUpdate(co.connection, co.options, query)(_ => {})
   }
 
   /** Create a unique constraint for a table
@@ -308,8 +389,23 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     UNIQUE
       (${tableColumnNames.mkString(",")})
     """
+    val co = genConnOpt(jdbcOptionsAddTable(table))
 
-    JdbcUtils.executeQuery(connection, jdbcOptions, query)(_ => {})
+    executeUpdate(co.connection, co.options, query)(_ => {})
+  }
+
+  /** Delete data from a table
+    *
+    * @param table
+    * @param conditions
+    */
+  def deleteByConditions(table: String, conditions: String): Unit = {
+    val query = s"""
+    DELETE FROM ${table} WHERE $conditions
+    """
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    executeUpdate(co.connection, co.options, query)(_ => {})
   }
 
   /** Check if a table exists
@@ -317,31 +413,42 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
     * @param table
     * @return
     */
-  def tableExists(table: String): Boolean =
-    JdbcUtils.tableExists(connection, jdbcOptionsAddTable(table))
+  def tableExists(table: String): Boolean = {
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    JdbcUtils.tableExists(co.connection, co.options)
+  }
 
   /** Drop a table
     *
     * @param table
     */
-  def dropTable(table: String): Unit =
-    JdbcUtils.dropTable(connection, table, jdbcOptions)
+  def dropTable(table: String): Unit = {
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    JdbcUtils.dropTable(co.connection, table, co.options)
+  }
 
   /** Truncate a table
     *
     * @param table
     * @param cascadeTruncate
     */
-  def truncateTable(table: String, cascadeTruncate: Boolean = false): Unit =
-    JdbcUtils.truncateTable(connection, jdbcOptionsAddTruncateTable(table, cascadeTruncate))
+  def truncateTable(table: String, cascadeTruncate: Boolean = false): Unit = {
+    val co = genConnOpt(jdbcOptionsAddTruncateTable(table, cascadeTruncate))
+
+    JdbcUtils.truncateTable(co.connection, co.options)
+  }
 
   /** Get a table's schema if it exists
     *
     * @param table
     * @return
     */
-  def getSchemaOption(table: String): Option[StructType] = {
-    JdbcUtils.getSchemaOption(connection, jdbcOptionsAddTable(table))
+  def getTableSchema(table: String): Option[StructType] = {
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    JdbcUtils.getSchemaOption(co.connection, co.options)
   }
 
   /** Save a DataFrame to the database in a single transaction
@@ -389,35 +496,44 @@ class MyJdbcUtils(conn: Jotting.Conn, connectionOpt: Option[Connection] = None) 
       createTableColumnTypes: Option[String],
       createTableOptions: Option[String],
       tableComment: Option[String]
-  ): Unit =
-    JdbcUtils.createTable(
-      connection,
-      table,
-      schema,
-      isCaseSensitive,
+  ): Unit = {
+    val co = genConnOpt(
       jdbcOptionsAddCreateTable(
         createTableColumnTypes,
         createTableOptions,
         tableComment
       )
     )
+    JdbcUtils.createTable(
+      co.connection,
+      table,
+      schema,
+      isCaseSensitive,
+      co.options
+    )
+  }
 
   /** Rename a table from the JDBC database
     *
     * @param oldTable
     * @param newTable
     */
-  def renameTable(oldTable: String, newTable: String): Unit =
-    JdbcUtils.renameTable(connection, oldTable, newTable, jdbcOptions)
+  def renameTable(oldTable: String, newTable: String): Unit = {
+    val c = genConnOpt()
+
+    JdbcUtils.renameTable(c.connection, oldTable, newTable, c.options)
+  }
 
   /** Update a table from the JDBC database
     *
     * @param table
     * @param changes
     */
-  def alterTable(table: String, changes: Seq[TableChange]): Unit =
-    JdbcUtils.alterTable(connection, table, changes, jdbcOptions)
+  def alterTable(table: String, changes: Seq[TableChange]): Unit = {
+    val c = genConnOpt()
 
+    JdbcUtils.alterTable(c.connection, table, changes, c.options)
+  }
   // TODO:
   // createSchema
   // schemaExists
@@ -442,4 +558,6 @@ object MyJdbcUtils {
     type UpsertAction = Value
     val DoNothing, DoUpdate = Value
   }
+
+  case class ConnectionOptions(connection: Connection, options: JdbcOptionsInWrite)
 }
