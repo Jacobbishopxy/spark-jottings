@@ -1,5 +1,7 @@
 package jotting
 
+import com.typesafe.config.Config
+
 object Jotting {
   val configFile = "application.conf"
 
@@ -20,5 +22,30 @@ object Jotting {
       "user"     -> user,
       "password" -> password
     )
+  }
+
+  object Conn {
+    def apply(
+        db: String,
+        driver: String,
+        host: String,
+        port: Int,
+        database: String,
+        user: String,
+        password: String
+    ): Conn =
+      Conn(db, driver, host, port, database, user, password)
+
+    def apply(config: Config): Conn =
+      Conn(
+        config.getString("db"),
+        config.getString("driver"),
+        config.getString("host"),
+        config.getInt("port"),
+        config.getString("database"),
+        config.getString("user"),
+        config.getString("password")
+      )
+
   }
 }

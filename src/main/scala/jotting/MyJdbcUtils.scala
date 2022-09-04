@@ -876,7 +876,9 @@ object MyJdbcUtils {
     val DoNothing, DoUpdate = Value
   }
 
-  object DeleteOrUpdate extends Enumeration {
+  /** OnDelete/OnUpdate. Private marker
+    */
+  private object DeleteOrUpdate extends Enumeration {
     type DeleteOrUpdate = Value
     val Delete, Update = Value
 
@@ -886,6 +888,8 @@ object MyJdbcUtils {
     }
   }
 
+  /** ForeignKey onDelete/onUpdate's actions
+    */
   object ForeignKeyModifyAction extends Enumeration {
     type ForeignKeyModifyAction = Value
     val SetNull, SetDefault, Restrict, NoAction, Cascade = Value

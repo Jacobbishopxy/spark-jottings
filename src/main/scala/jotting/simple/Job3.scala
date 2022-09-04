@@ -1,7 +1,6 @@
 package jotting.simple
 
 import org.apache.spark.sql.SparkSession
-import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.types.StructField
@@ -24,20 +23,12 @@ object Job3 {
   def main(args: Array[String]): Unit = {
     implicit val spark = SparkSession
       .builder()
-      .appName("Spark SQL runJdbcDatasetUpsert example")
+      .appName("MyJdbcUtils test cases")
       .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
       .getOrCreate()
 
-    val config: Config = ConfigFactory.load(configFile).getConfig("job")
-    val conn = Conn(
-      config.getString("db"),
-      config.getString("driver"),
-      config.getString("host"),
-      config.getInt("port"),
-      config.getString("database"),
-      config.getString("user"),
-      config.getString("password")
-    )
+    val config = ConfigFactory.load(configFile).getConfig("job")
+    val conn   = Conn(config)
 
     args.toList match {
       case "save" :: _         => runJdbcDatasetSave(conn)
