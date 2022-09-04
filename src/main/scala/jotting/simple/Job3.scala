@@ -40,12 +40,15 @@ object Job3 {
     )
 
     args.toList match {
-      case "write" :: _          => runJdbcDatasetWrite(conn)
-      case "addConstraint" :: _  => runJdbcAddConstraint(conn)
-      case "dropConstraint" :: _ => runJdbcDropConstraint(conn)
-      case "upsert" :: _         => runJdbcDatasetUpsert(conn)
-      case "delete" :: _         => runJdbcDatasetDelete(conn)
-      case _                     => throw new Exception("Argument is required")
+      case "save" :: _         => runJdbcDatasetSave(conn)
+      case "createUnique" :: _ => runJdbcCreateUnique(conn)
+      case "dropUnique" :: _   => runJdbcDropUnique(conn)
+      case "createIndex" :: _  => runJdbcCreateIndex(conn)
+      case "dropIndex" :: _    => runJdbcDropIndex(conn)
+      case "upsert" :: _       => runJdbcDatasetUpsert(conn)
+      case "delete" :: _       => runJdbcDatasetDelete(conn)
+      case "drop" :: _         => runJdbcDropTable(conn)
+      case _                   => throw new Exception("Argument is required")
     }
 
     spark.stop()
@@ -53,7 +56,7 @@ object Job3 {
 
   val save_to = "job3"
 
-  private def runJdbcDatasetWrite(conn: Conn)(implicit spark: SparkSession): Unit = {
+  private def runJdbcDatasetSave(conn: Conn)(implicit spark: SparkSession): Unit = {
     import spark.implicits._
 
     val data = Seq(
@@ -69,40 +72,44 @@ object Job3 {
       .toDF("date", "language", "users_count")
       .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
-    df.write
-      .format("jdbc")
-      .options(conn.options)
-      .option("dbtable", save_to)
-      .mode("overwrite")
-      .save()
+    val helper = MyJdbcUtils(conn)
 
-    new MyJdbcUtils(conn).addUniqueConstraint(
+    // save table
+    helper.saveTable(df, save_to, "overwrite")
+
+    // add unique constraint
+    helper.createUniqueConstraint(
       save_to,
       s"${save_to}_date_language",
       Seq("date", "language")
     )
   }
 
-  private def runJdbcAddConstraint(conn: Conn)(implicit spark: SparkSession): Unit = {
-    new MyJdbcUtils(conn).addUniqueConstraint(
+  private def runJdbcCreateUnique(conn: Conn)(implicit spark: SparkSession): Unit =
+    MyJdbcUtils(conn).createUniqueConstraint(
       save_to,
       s"${save_to}_date_language",
       Seq("date", "language")
     )
-  }
 
-  private def runJdbcDropConstraint(conn: Conn)(implicit spark: SparkSession): Unit = {
-    new MyJdbcUtils(conn).dropUniqueConstraint(
+  private def runJdbcDropUnique(conn: Conn)(implicit spark: SparkSession): Unit =
+    MyJdbcUtils(conn).dropUniqueConstraint(
       save_to,
       s"${save_to}_date_language"
     )
-  }
 
-  private def runJdbcAddIndex(conn: Conn)(implicit spark: SparkSession): Unit = {
-    //
+  private def runJdbcCreateIndex(conn: Conn)(implicit spark: SparkSession): Unit =
+    MyJdbcUtils(conn).createIndex(
+      save_to,
+      s"${save_to}_date_index",
+      Seq("date")
+    )
 
-    // JdbcUtils.createIndex()
-  }
+  private def runJdbcDropIndex(conn: Conn)(implicit spark: SparkSession): Unit =
+    MyJdbcUtils(conn).dropIndex(
+      save_to,
+      s"${save_to}_date_language_index"
+    )
 
   private def runJdbcDatasetUpsert(conn: Conn)(implicit spark: SparkSession): Unit = {
     import spark.implicits._
@@ -126,7 +133,7 @@ object Job3 {
       .toDF("date", "language", "users_count")
       .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
-    new MyJdbcUtils(conn).upsertTable(
+    MyJdbcUtils(conn).upsertTable(
       df,
       save_to,
       None,
@@ -138,7 +145,9 @@ object Job3 {
 
   private def runJdbcDatasetDelete(conn: Conn)(implicit spark: SparkSession): Unit = {
     val del = "date = '2010-01-23' and language = 'Scala'"
-    new MyJdbcUtils(conn).deleteByConditions(save_to, del)
+    MyJdbcUtils(conn).deleteByConditions(save_to, del)
   }
 
+  private def runJdbcDropTable(conn: Conn)(implicit spark: SparkSession): Unit =
+    MyJdbcUtils(conn).dropTable(save_to)
 }

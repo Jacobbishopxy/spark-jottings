@@ -10,12 +10,15 @@ import org.apache.spark.sql.connector.catalog.TableChange
 import org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions
 import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.connector.catalog.index.TableIndex
+import org.apache.spark.sql.SaveMode
 
 class MyJdbcUtils(conn: Jotting.Conn) {
 
   import MyJdbcUtils._
 
-  lazy val dialect = JdbcDialects.get(conn.url)
+  // ===============================================================================================
+  // private helper functions
+  // ===============================================================================================
 
   /** Create a JdbcOptions
     *
@@ -48,7 +51,8 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       isolationLevel: Option[String] = None,
       numPartition: Option[Integer] = None
   ): JdbcOptionsInWrite = {
-    val op = conn.options ++
+    val op = conn.options +
+      ("dbtable" -> table) ++
       batchSize.map(v => ("batchsize" -> v.toString())) ++
       isolationLevel.map(v => ("isolationLevel" -> v)) ++
       numPartition.map(v => ("numPartitions" -> v.toString()))
@@ -121,41 +125,30 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     ConnectionOptions(connection, options)
   }
 
-  /** Raw statement for saving a DataFrame
+  /** Execute a raw SQL statement
     *
-    * @param df
-    * @param statement
+    * @param conn
     * @param options
+    * @param sql
+    * @param f
     */
-  def runStatement(
-      df: DataFrame,
-      statement: String,
-      options: JdbcOptionsInWrite
-  ): Unit = {
-    val url            = options.url
-    val table          = options.table
-    val updateSchema   = df.schema
-    val batchSize      = options.batchSize
-    val isolationLevel = options.isolationLevel
-
-    val repartitionedDF = options.numPartitions match {
-      case Some(n) if n < df.rdd.getNumPartitions => df.coalesce(n)
-      case _                                      => df
-    }
-
-    repartitionedDF.rdd.foreachPartition { iterator =>
-      JdbcUtils.savePartition(
-        table,
-        iterator,
-        updateSchema,
-        statement,
-        batchSize,
-        dialect,
-        isolationLevel,
-        options
-      )
+  private def executeUpdate(
+      conn: Connection,
+      options: JDBCOptions,
+      sql: String
+  )(f: Int => Unit): Unit = {
+    val statement = conn.createStatement
+    try {
+      statement.setQueryTimeout(options.queryTimeout)
+      val eff = statement.executeUpdate(sql)
+      f(eff)
+    } finally {
+      statement.close()
     }
   }
+
+  private def genUnsupportedDriver(method: String): String =
+    s"Unsupported driver, $method method only works on: org.postgresql.Driver/com.mysql.jdbc.Driver"
 
   /** Generate an upsert SQL statement.
     *
@@ -184,6 +177,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     }
     val tableColumnNames  = tableSchema.fieldNames
     val tableSchemaFields = tableSchema.fields
+    val dialect           = JdbcDialects.get(conn.url)
 
     val columns = tableSchemaFields
       .map { col =>
@@ -201,8 +195,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       .map(_ => "?")
       .mkString(",")
 
-    val driverClass = genOptions().driverClass
-    val stmt = (driverClass, conflictAction) match {
+    val stmt = (conn.driver, conflictAction) match {
       case ("org.postgresql.Driver", UpsertAction.DoUpdate) =>
         val updateSet = tableColumnNames
           .filterNot(conflictColumns.contains(_))
@@ -258,14 +251,180 @@ class MyJdbcUtils(conn: Jotting.Conn) {
           $updateSet
         """
       case _ =>
-        throw new Exception(
-          "Unsupported driver, upsert method only works on: org.postgresql.Driver/com.mysql.jdbc.Driver"
-        )
+        throw new Exception(genUnsupportedDriver("upsert"))
     }
 
     conditions match {
       case Some(value) => stmt ++ s"\nWHERE $value"
       case None        => stmt
+    }
+  }
+
+  /** Generate a createIndex SQL statement
+    *
+    * @param table
+    * @param name
+    * @param columns
+    * @return
+    */
+  private def generateCreateIndexStatement(
+      table: String,
+      indexName: String,
+      columns: Seq[String]
+  ): String =
+    conn.driver match {
+      case "org.postgresql.Driver" =>
+        val cl = columns.map(c => s""""$c"""").mkString(",")
+        s"""
+        CREATE INDEX "$indexName" ON "$table" ($cl)
+        """
+      case "com.mysql.jdbc.Driver" =>
+        val cl = columns.map(c => s"""`$c`""").mkString(",")
+        s"""
+        CREATE INDEX `$indexName` ON `$table` ($cl)
+        """
+      case _ =>
+        throw new Exception(genUnsupportedDriver("createIndex"))
+    }
+
+  /** Generate a dropIndex SQL statement
+    *
+    * @param table
+    * @param name
+    * @return
+    */
+  private def generateDropIndexStatement(table: String, name: String): String =
+    conn.driver match {
+      case "org.postgresql.Driver" =>
+        s"""
+        DROP INDEX "$name"
+        """
+      case "com.mysql.jdbc.Driver" =>
+        s"""
+        DROP INDEX `$name` ON `$table`
+        """
+      case _ =>
+        throw new Exception(genUnsupportedDriver("dropIndex"))
+    }
+
+  /** Generate a createForeignKey SQL statement
+    *
+    * @param fromTable
+    * @param fromTableColumn
+    * @param foreignKeyName
+    * @param toTable
+    * @param toTableColumn
+    * @param onDelete
+    * @param onUpdate
+    * @return
+    */
+  private def generateCreateForeignKey(
+      fromTable: String,
+      fromTableColumn: String,
+      foreignKeyName: String,
+      toTable: String,
+      toTableColumn: String,
+      onDelete: Option[ForeignKeyModifyAction.Value],
+      onUpdate: Option[ForeignKeyModifyAction.Value]
+  ): String =
+    conn.driver match {
+      case "org.postgresql.Driver" =>
+        s"""
+        ALTER TABLE "$fromTable"
+        ADD CONSTRAINT "$foreignKeyName"
+        FOREIGN KEY ("$fromTableColumn")
+        REFERENCES "$toTable" ("$toTableColumn")
+        """ +
+          onDelete
+            .map(ForeignKeyModifyAction.generateString(_, DeleteOrUpdate.Delete))
+            .getOrElse("") +
+          onUpdate
+            .map(ForeignKeyModifyAction.generateString(_, DeleteOrUpdate.Update))
+            .getOrElse("")
+
+      case "com.mysql.jdbc.Driver" =>
+        s"""
+        ALTER TABLE `$fromTable`
+        ADD CONSTRAINT `$foreignKeyName`
+        FOREIGN KEY (`$fromTableColumn`)
+        REFERENCES `$toTable` (`$toTableColumn`)
+        """ +
+          onDelete
+            .map(ForeignKeyModifyAction.generateString(_, DeleteOrUpdate.Delete))
+            .getOrElse("") +
+          onUpdate
+            .map(ForeignKeyModifyAction.generateString(_, DeleteOrUpdate.Update))
+            .getOrElse("")
+      case _ =>
+        throw new Exception(genUnsupportedDriver("createForeignKey"))
+    }
+
+  /** Generate a dropForeignKey SQL statement
+    *
+    * @param table
+    * @param foreignKeyName
+    * @return
+    */
+  private def generateDropForeignKey(table: String, foreignKeyName: String): String = {
+    conn.driver match {
+      case "org.postgresql.Driver" =>
+        s"""
+        ALTER TABLE "$table" DROP CONSTRAINT "$foreignKeyName"
+        """
+      case "com.mysql.jdbc.Driver" =>
+        s"""
+        ALTER TABLE `$table` DROP FOREIGN KEY "$foreignKeyName"
+        """
+      case _ =>
+        throw new Exception(genUnsupportedDriver("dropForeignKey"))
+
+    }
+  }
+
+  // ===============================================================================================
+  // general functions
+  // 1. runStatement
+  // 1. saveTable
+  // 1. upsertTable
+  // 1.
+  // ===============================================================================================
+
+  /** Raw statement for saving a DataFrame
+    *
+    * @param df
+    * @param statement
+    * @param options
+    */
+  def runStatement(
+      df: DataFrame,
+      statement: String,
+      options: JdbcOptionsInWrite
+  ): Unit = {
+    // IMPORTANT!
+    // These variables are required under this context scope, because of `.rdd.foreachPartition` broadcasting.
+    val url            = options.url
+    val dialect        = JdbcDialects.get(url)
+    val table          = options.table
+    val updateSchema   = df.schema
+    val batchSize      = options.batchSize
+    val isolationLevel = options.isolationLevel
+
+    val repartitionedDF = options.numPartitions match {
+      case Some(n) if n < df.rdd.getNumPartitions => df.coalesce(n)
+      case _                                      => df
+    }
+
+    repartitionedDF.rdd.foreachPartition { iterator =>
+      JdbcUtils.savePartition(
+        table,
+        iterator,
+        updateSchema,
+        statement,
+        batchSize,
+        dialect,
+        isolationLevel,
+        options
+      )
     }
   }
 
@@ -338,69 +497,6 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       conflictColumns,
       ca
     )
-  }
-
-  /** Execute a raw SQL statement
-    *
-    * @param conn
-    * @param options
-    * @param sql
-    * @param f
-    */
-  private def executeUpdate(
-      conn: Connection,
-      options: JDBCOptions,
-      sql: String
-  )(f: Int => Unit): Unit = {
-    val statement = conn.createStatement
-    try {
-      statement.setQueryTimeout(options.queryTimeout)
-      val eff = statement.executeUpdate(sql)
-      f(eff)
-    } finally {
-      statement.close()
-    }
-  }
-
-  /** Drop a unique constraint from a table
-    *
-    * @param table
-    * @param name
-    */
-  def dropUniqueConstraint(table: String, name: String): Unit = {
-    val query = s"""
-    ALTER TABLE
-      $table
-    DROP CONSTRAINT
-      $name
-    """
-    val co = genConnOpt(jdbcOptionsAddTable(table))
-
-    executeUpdate(co.conn, co.opt, query)(_ => {})
-  }
-
-  /** Create a unique constraint for a table
-    *
-    * @param table
-    * @param name
-    * @param tableColumnNames
-    */
-  def addUniqueConstraint(
-      table: String,
-      name: String,
-      tableColumnNames: Seq[String]
-  ): Unit = {
-    val query = s"""
-    ALTER TABLE
-      $table
-    ADD CONSTRAINT
-      $name
-    UNIQUE
-      (${tableColumnNames.mkString(",")})
-    """
-    val co = genConnOpt(jdbcOptionsAddTable(table))
-
-    executeUpdate(co.conn, co.opt, query)(_ => {})
   }
 
   /** Delete data from a table
@@ -488,6 +584,38 @@ class MyJdbcUtils(conn: Jotting.Conn) {
         numPartition
       )
     )
+
+  /** Save a DataFrame to the database with mode option
+    *
+    * @param df
+    * @param table
+    * @param mode
+    */
+  def saveTable(
+      df: DataFrame,
+      table: String,
+      mode: SaveMode
+  ): Unit = {
+    df.write
+      .format("jdbc")
+      .options(conn.options)
+      .option("dbtable", table)
+      .mode(mode)
+      .save()
+  }
+
+  def saveTable(
+      df: DataFrame,
+      table: String,
+      mode: String
+  ): Unit = {
+    df.write
+      .format("jdbc")
+      .options(conn.options)
+      .option("dbtable", table)
+      .mode(mode)
+      .save()
+  }
 
   /** Create a table with a given schema
     *
@@ -608,6 +736,40 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     JdbcUtils.dropSchema(co.conn, co.opt, schema, cascade)
   }
 
+  /** Create a unique constraint for a table
+    *
+    * @param table
+    * @param name
+    * @param tableColumnNames
+    */
+  def createUniqueConstraint(
+      table: String,
+      name: String,
+      tableColumnNames: Seq[String]
+  ): Unit = {
+    val query = s"""
+    ALTER TABLE $table ADD CONSTRAINT $name
+    UNIQUE (${tableColumnNames.mkString(",")})
+    """
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    executeUpdate(co.conn, co.opt, query)(_ => {})
+  }
+
+  /** Drop a unique constraint from a table
+    *
+    * @param table
+    * @param name
+    */
+  def dropUniqueConstraint(table: String, name: String): Unit = {
+    val query = s"""
+    ALTER TABLE $table DROP CONSTRAINT $name
+    """
+    val co = genConnOpt(jdbcOptionsAddTable(table))
+
+    executeUpdate(co.conn, co.opt, query)(_ => {})
+  }
+
   /** Create an index
     *
     * @param table
@@ -619,21 +781,12 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   def createIndex(
       table: String,
       index: String,
-      columns: Array[NamedReference],
-      columnsProperties: java.util.Map[NamedReference, java.util.Map[String, String]],
-      properties: java.util.Map[String, String]
+      columns: Seq[String]
   ): Unit = {
-    val co = genConnOpt(jdbcOptionsAddTable(table))
+    val co    = genConnOpt(jdbcOptionsAddTable(table))
+    val query = generateCreateIndexStatement(table, index, columns)
 
-    JdbcUtils.createIndex(
-      co.conn,
-      index,
-      table,
-      columns,
-      columnsProperties,
-      properties,
-      co.opt
-    )
+    executeUpdate(co.conn, co.opt, query)(_ => {})
   }
 
   /** Check an index if exists
@@ -643,9 +796,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @return
     */
   def indexExists(table: String, index: String): Boolean = {
-    val co = genConnOpt(jdbcOptionsAddTable(table))
-
-    JdbcUtils.indexExists(co.conn, index, table, co.opt)
+    throw new UnsupportedOperationException("indexExists not supported currently")
   }
 
   /** Drop an index
@@ -654,9 +805,10 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @param index
     */
   def dropIndex(table: String, index: String): Unit = {
-    val co = genConnOpt(jdbcOptionsAddTable(table))
+    val query = generateDropIndexStatement(table, index)
+    val co    = genConnOpt(jdbcOptionsAddTable(table))
 
-    JdbcUtils.dropIndex(co.conn, index, table, co.opt)
+    executeUpdate(co.conn, co.opt, query)(_ => {})
   }
 
   /** List indices from a table
@@ -665,9 +817,52 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @return
     */
   def listIndexes(table: String): Array[TableIndex] = {
-    val co = genConnOpt(jdbcOptionsAddTable(table))
+    throw new UnsupportedOperationException("listIndexes not supported currently")
+  }
 
-    JdbcUtils.listIndexes(co.conn, table, co.opt)
+  /** Create a foreign key
+    *
+    * @param fromTable
+    * @param fromTableColumn
+    * @param foreignKeyName
+    * @param toTable
+    * @param toTableColumn
+    * @param onDelete
+    * @param onUpdate
+    */
+  def createForeignKey(
+      fromTable: String,
+      fromTableColumn: String,
+      foreignKeyName: String,
+      toTable: String,
+      toTableColumn: String,
+      onDelete: Option[ForeignKeyModifyAction.Value],
+      onUpdate: Option[ForeignKeyModifyAction.Value]
+  ): Unit = {
+    val query = generateCreateForeignKey(
+      fromTable,
+      fromTableColumn,
+      foreignKeyName,
+      toTable,
+      toTableColumn,
+      onDelete,
+      onUpdate
+    )
+    val co = genConnOpt()
+
+    executeUpdate(co.conn, co.opt, query)(_ => {})
+  }
+
+  /** Drop a foreign key
+    *
+    * @param table
+    * @param name
+    */
+  def dropForeignKey(table: String, name: String): Unit = {
+    val query = generateDropForeignKey(table, name)
+    val co    = genConnOpt()
+
+    executeUpdate(co.conn, co.opt, query)(_ => {})
   }
 
 }
@@ -681,5 +876,36 @@ object MyJdbcUtils {
     val DoNothing, DoUpdate = Value
   }
 
+  object DeleteOrUpdate extends Enumeration {
+    type DeleteOrUpdate = Value
+    val Delete, Update = Value
+
+    def generateString(v: Value): String = v match {
+      case Delete => "DELETE"
+      case Update => "UPDATE"
+    }
+  }
+
+  object ForeignKeyModifyAction extends Enumeration {
+    type ForeignKeyModifyAction = Value
+    val SetNull, SetDefault, Restrict, NoAction, Cascade = Value
+
+    def generateString(a: Value, t: DeleteOrUpdate.Value): String =
+      a match {
+        case ForeignKeyModifyAction.SetNull =>
+          s"\nON ${DeleteOrUpdate.generateString(t)} SET NULL"
+        case ForeignKeyModifyAction.SetDefault =>
+          s"\nON ${DeleteOrUpdate.generateString(t)} SET DEFAULT"
+        case ForeignKeyModifyAction.Restrict =>
+          s"\nON ${DeleteOrUpdate.generateString(t)} RESTRICT"
+        case ForeignKeyModifyAction.NoAction =>
+          s"\nON ${DeleteOrUpdate.generateString(t)} NO ACTION"
+        case ForeignKeyModifyAction.Cascade =>
+          s"\nON ${DeleteOrUpdate.generateString(t)} CASCADE"
+      }
+  }
+
   case class ConnectionOptions(conn: Connection, opt: JdbcOptionsInWrite)
+
+  def apply(conn: Jotting.Conn): MyJdbcUtils = new MyJdbcUtils(conn)
 }
