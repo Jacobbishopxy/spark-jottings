@@ -20,16 +20,8 @@ object Job2 {
       // .config("spark.some.config.option", "some-value")
       .getOrCreate()
 
-    val config: Config = ConfigFactory.load(configFile).getConfig("job")
-    val conn = Conn(
-      config.getString("db"),
-      config.getString("driver"),
-      config.getString("host"),
-      config.getInt("port"),
-      config.getString("database"),
-      config.getString("user"),
-      config.getString("password")
-    )
+    val config = ConfigFactory.load(configFile).getConfig("job")
+    val conn   = Conn(config)
 
     runJdbcDatasetWrite(conn)
     runJdbcDatasetRead(conn)

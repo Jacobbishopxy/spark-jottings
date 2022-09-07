@@ -386,7 +386,28 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   // 1. runStatement
   // 1. saveTable
   // 1. upsertTable
-  // 1.
+  // 1. deleteByConditions
+  // 1. tableExists
+  // 1. dropTable
+  // 1. truncateTable
+  // 1. getTableSchema
+  // 1. createTable
+  // 1. renameTable
+  // 1. alterTable
+  // 1. createSchema
+  // 1. schemaExists
+  // 1. listSchemas
+  // 1. alterSchemaComment
+  // 1. removeSchemaComment
+  // 1. dropSchema
+  // 1. createUniqueConstraint
+  // 1. dropUniqueConstraint
+  // 1. createIndex
+  // 1. indexExists
+  // 1. dropIndex
+  // 1. listIndexes
+  // 1. createForeignKey
+  // 1. dropForeignKey
   // ===============================================================================================
 
   /** Raw statement for saving a DataFrame
@@ -426,6 +447,67 @@ class MyJdbcUtils(conn: Jotting.Conn) {
         options
       )
     }
+  }
+
+  /** Save a DataFrame to the database in a single transaction
+    *
+    * @param df
+    * @param table
+    * @param isCaseSensitive
+    * @param batchSize
+    * @param isolationLevel
+    * @param numPartition
+    */
+  def saveTable(
+      df: DataFrame,
+      table: String,
+      isCaseSensitive: Boolean,
+      batchSize: Option[Integer] = None,
+      isolationLevel: Option[String] = None,
+      numPartition: Option[Integer] = None
+  ): Unit =
+    JdbcUtils.saveTable(
+      df,
+      None,
+      isCaseSensitive,
+      jdbcOptionsAddSaveTable(
+        table,
+        batchSize,
+        isolationLevel,
+        numPartition
+      )
+    )
+
+  /** Save a DataFrame to the database with mode option
+    *
+    * @param df
+    * @param table
+    * @param mode
+    */
+  def saveTable(
+      df: DataFrame,
+      table: String,
+      mode: SaveMode
+  ): Unit = {
+    df.write
+      .format("jdbc")
+      .options(conn.options)
+      .option("dbtable", table)
+      .mode(mode)
+      .save()
+  }
+
+  def saveTable(
+      df: DataFrame,
+      table: String,
+      mode: String
+  ): Unit = {
+    df.write
+      .format("jdbc")
+      .options(conn.options)
+      .option("dbtable", table)
+      .mode(mode)
+      .save()
   }
 
   /** Upsert table.
@@ -554,67 +636,6 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     val co = genConnOpt(jdbcOptionsAddTable(table))
 
     JdbcUtils.getSchemaOption(co.conn, co.opt)
-  }
-
-  /** Save a DataFrame to the database in a single transaction
-    *
-    * @param df
-    * @param table
-    * @param isCaseSensitive
-    * @param batchSize
-    * @param isolationLevel
-    * @param numPartition
-    */
-  def saveTable(
-      df: DataFrame,
-      table: String,
-      isCaseSensitive: Boolean,
-      batchSize: Option[Integer] = None,
-      isolationLevel: Option[String] = None,
-      numPartition: Option[Integer] = None
-  ): Unit =
-    JdbcUtils.saveTable(
-      df,
-      None,
-      isCaseSensitive,
-      jdbcOptionsAddSaveTable(
-        table,
-        batchSize,
-        isolationLevel,
-        numPartition
-      )
-    )
-
-  /** Save a DataFrame to the database with mode option
-    *
-    * @param df
-    * @param table
-    * @param mode
-    */
-  def saveTable(
-      df: DataFrame,
-      table: String,
-      mode: SaveMode
-  ): Unit = {
-    df.write
-      .format("jdbc")
-      .options(conn.options)
-      .option("dbtable", table)
-      .mode(mode)
-      .save()
-  }
-
-  def saveTable(
-      df: DataFrame,
-      table: String,
-      mode: String
-  ): Unit = {
-    df.write
-      .format("jdbc")
-      .options(conn.options)
-      .option("dbtable", table)
-      .mode(mode)
-      .save()
   }
 
   /** Create a table with a given schema
@@ -864,7 +885,6 @@ class MyJdbcUtils(conn: Jotting.Conn) {
 
     executeUpdate(co.conn, co.opt, query)(_ => {})
   }
-
 }
 
 object MyJdbcUtils {
