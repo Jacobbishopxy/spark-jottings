@@ -14,7 +14,21 @@ object Jotting {
       user: String,
       password: String
   ) {
-    def url: String = s"jdbc:$db://$host:$port/$database?zeroDateTimeBehavior=convertToNull"
+    lazy val driverType = driver match {
+      case "com.microsoft.sqlserver.jdbc.SQLServerDriver" => DriverType.MsSql
+      case "com.mysql.jdbc.Driver"                        => DriverType.MySql
+      case "org.postgresql.Driver"                        => DriverType.Postgres
+      case _                                              => DriverType.Other
+    }
+
+    def url: String = {
+      driverType match {
+        case DriverType.MsSql =>
+          s"jdbc:$db://$host:$port;databaseName=$database;encrypt=true;trustServerCertificate=true;"
+        case _ =>
+          s"jdbc:$db://$host:$port/$database"
+      }
+    }
 
     def options: Map[String, String] = Map(
       "url"      -> this.url,
@@ -36,4 +50,9 @@ object Jotting {
         config.getString("password")
       )
   }
+}
+
+object DriverType extends Enumeration {
+  type DriverType = Value
+  val Postgres, MySql, MsSql, Other = Value
 }

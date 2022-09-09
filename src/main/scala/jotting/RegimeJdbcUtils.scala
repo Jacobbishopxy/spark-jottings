@@ -11,10 +11,10 @@ import org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions
 import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.connector.catalog.index.TableIndex
 import org.apache.spark.sql.SaveMode
+import org.apache.spark.sql.SparkSession
 
-class MyJdbcUtils(conn: Jotting.Conn) {
-
-  import MyJdbcUtils._
+class RegimeJdbcHelper(conn: Jotting.Conn) {
+  import RegimeJdbcHelper._
 
   // ===============================================================================================
   // private helper functions
@@ -147,8 +147,72 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     }
   }
 
-  private def genUnsupportedDriver(method: String): String =
-    s"Unsupported driver, $method method only works on: org.postgresql.Driver/com.mysql.jdbc.Driver"
+  /** Unsupported driver announcement
+    *
+    * @param method
+    * @return
+    */
+  private def genUnsupportedDriver(method: String): UnsupportedOperationException =
+    new UnsupportedOperationException(
+      s"Unsupported driver, $method method only works on: org.postgresql.Driver/com.mysql.jdbc.Driver"
+    )
+
+  /** Generate a create primary key SQL statement.
+    *
+    * Currently, only supports MySQL & PostgreSQL
+    *
+    * @param tableName
+    * @param primaryKeyName
+    * @param columns
+    * @return
+    */
+  private def generateCreatePrimaryKeyStatement(
+      tableName: String,
+      primaryKeyName: String,
+      columns: Seq[String]
+  ): String = {
+    conn.driverType match {
+      case DriverType.Postgres =>
+        s"""
+        ALTER TABLE $tableName
+        ADD CONSTRAINT $primaryKeyName
+        PRIMARY KEY (${columns.mkString(",")})
+        """
+      case DriverType.MySql =>
+        s"""
+        ALTER TABLE $tableName
+        ADD PRIMARY KEY (${columns.mkString(",")})
+        """
+      case _ =>
+        throw genUnsupportedDriver("createPrimaryKey")
+    }
+  }
+
+  /** Generate a drop primary key SQL statement.
+    *
+    * Currently, only supports MySQL & PostgreSQL
+    *
+    * @param tableName
+    * @param primaryKeyName
+    * @return
+    */
+  private def generateDropPrimaryKeyStatement(
+      tableName: String,
+      primaryKeyName: String
+  ): String = {
+    conn.driverType match {
+      case DriverType.Postgres =>
+        s"""
+        ALTER TABLE $tableName
+        DROP CONSTRAINT $primaryKeyName
+        """
+      case DriverType.MySql =>
+        s"""
+        ALTER TABLE $tableName
+        DROP PRIMARY KEY
+        """
+    }
+  }
 
   /** Generate an upsert SQL statement.
     *
@@ -195,8 +259,8 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       .map(_ => "?")
       .mkString(",")
 
-    val stmt = (conn.driver, conflictAction) match {
-      case ("org.postgresql.Driver", UpsertAction.DoUpdate) =>
+    val stmt = (conn.driverType, conflictAction) match {
+      case (DriverType.Postgres, UpsertAction.DoUpdate) =>
         val updateSet = tableColumnNames
           .filterNot(conflictColumns.contains(_))
           .map(n => s""""$n" = EXCLUDED."$n"""")
@@ -212,7 +276,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
         DO UPDATE SET
           $updateSet
         """
-      case ("org.postgresql.Driver", _) =>
+      case (DriverType.Postgres, _) =>
         s"""
         INSERT INTO
           $table ($columns)
@@ -222,7 +286,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
           ($conflictString)
         DO NOTHING
         """
-      case ("com.mysql.jdbc.Driver", UpsertAction.DoUpdate) =>
+      case (DriverType.MySql, UpsertAction.DoUpdate) =>
         val updateSet = tableColumnNames
           .filterNot(conflictColumns.contains(_))
           .map(n => s""""$n" = VALUES("$n")""")
@@ -236,7 +300,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
         ON DUPLICATE KEY UPDATE
           $updateSet
         """
-      case ("com.mysql.jdbc.Driver", _) =>
+      case (DriverType.MySql, _) =>
         val updateSet = tableColumnNames
           .filterNot(conflictColumns.contains(_))
           .map(n => s""""$n" = "$n"""")
@@ -251,7 +315,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
           $updateSet
         """
       case _ =>
-        throw new Exception(genUnsupportedDriver("upsert"))
+        throw genUnsupportedDriver("upsert")
     }
 
     conditions match {
@@ -272,19 +336,19 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       indexName: String,
       columns: Seq[String]
   ): String =
-    conn.driver match {
-      case "org.postgresql.Driver" =>
+    conn.driverType match {
+      case DriverType.Postgres =>
         val cl = columns.map(c => s""""$c"""").mkString(",")
         s"""
         CREATE INDEX "$indexName" ON "$table" ($cl)
         """
-      case "com.mysql.jdbc.Driver" =>
+      case DriverType.MySql =>
         val cl = columns.map(c => s"""`$c`""").mkString(",")
         s"""
         CREATE INDEX `$indexName` ON `$table` ($cl)
         """
       case _ =>
-        throw new Exception(genUnsupportedDriver("createIndex"))
+        throw genUnsupportedDriver("createIndex")
     }
 
   /** Generate a dropIndex SQL statement
@@ -294,17 +358,17 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @return
     */
   private def generateDropIndexStatement(table: String, name: String): String =
-    conn.driver match {
-      case "org.postgresql.Driver" =>
+    conn.driverType match {
+      case DriverType.Postgres =>
         s"""
         DROP INDEX "$name"
         """
-      case "com.mysql.jdbc.Driver" =>
+      case DriverType.MySql =>
         s"""
         DROP INDEX `$name` ON `$table`
         """
       case _ =>
-        throw new Exception(genUnsupportedDriver("dropIndex"))
+        throw genUnsupportedDriver("dropIndex")
     }
 
   /** Generate a createForeignKey SQL statement
@@ -327,8 +391,8 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       onDelete: Option[ForeignKeyModifyAction.Value],
       onUpdate: Option[ForeignKeyModifyAction.Value]
   ): String =
-    conn.driver match {
-      case "org.postgresql.Driver" =>
+    conn.driverType match {
+      case DriverType.Postgres =>
         s"""
         ALTER TABLE "$fromTable"
         ADD CONSTRAINT "$foreignKeyName"
@@ -342,7 +406,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
             .map(ForeignKeyModifyAction.generateString(_, DeleteOrUpdate.Update))
             .getOrElse("")
 
-      case "com.mysql.jdbc.Driver" =>
+      case DriverType.MySql =>
         s"""
         ALTER TABLE `$fromTable`
         ADD CONSTRAINT `$foreignKeyName`
@@ -356,7 +420,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
             .map(ForeignKeyModifyAction.generateString(_, DeleteOrUpdate.Update))
             .getOrElse("")
       case _ =>
-        throw new Exception(genUnsupportedDriver("createForeignKey"))
+        throw genUnsupportedDriver("createForeignKey")
     }
 
   /** Generate a dropForeignKey SQL statement
@@ -366,24 +430,24 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @return
     */
   private def generateDropForeignKey(table: String, foreignKeyName: String): String = {
-    conn.driver match {
-      case "org.postgresql.Driver" =>
+    conn.driverType match {
+      case DriverType.Postgres =>
         s"""
         ALTER TABLE "$table" DROP CONSTRAINT "$foreignKeyName"
         """
-      case "com.mysql.jdbc.Driver" =>
+      case DriverType.MySql =>
         s"""
         ALTER TABLE `$table` DROP FOREIGN KEY "$foreignKeyName"
         """
       case _ =>
-        throw new Exception(genUnsupportedDriver("dropForeignKey"))
-
+        throw genUnsupportedDriver("dropForeignKey")
     }
   }
 
   // ===============================================================================================
   // general functions
-  // 1. runStatement
+  // 1. runSaveStatement
+  // 1. readTable
   // 1. saveTable
   // 1. upsertTable
   // 1. deleteByConditions
@@ -400,6 +464,8 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   // 1. alterSchemaComment
   // 1. removeSchemaComment
   // 1. dropSchema
+  // 1. createPrimaryKey
+  // 1. dropPrimaryKey
   // 1. createUniqueConstraint
   // 1. dropUniqueConstraint
   // 1. createIndex
@@ -416,7 +482,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     * @param statement
     * @param options
     */
-  def runStatement(
+  def runSaveStatement(
       df: DataFrame,
       statement: String,
       options: JdbcOptionsInWrite
@@ -448,6 +514,22 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       )
     }
   }
+
+  /** Load a DataFrame by a SQL query
+    *
+    * @param spark
+    * @param sql
+    * @return
+    */
+  def readTable(spark: SparkSession, sql: String): DataFrame =
+    spark.read
+      .format("jdbc")
+      .options(conn.options)
+      .option("query", sql)
+      .load()
+
+  def readTable(sql: String)(implicit spark: SparkSession): DataFrame =
+    readTable(spark, sql)
 
   /** Save a DataFrame to the database in a single transaction
     *
@@ -539,7 +621,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
       conflictAction
     )
 
-    runStatement(
+    runSaveStatement(
       df,
       upsertStmt,
       jdbcOptionsAddTable(table)
@@ -757,6 +839,35 @@ class MyJdbcUtils(conn: Jotting.Conn) {
     JdbcUtils.dropSchema(co.conn, co.opt, schema, cascade)
   }
 
+  /** Create a primary key
+    *
+    * @param tableName
+    * @param primaryKeyName
+    * @param columns
+    */
+  def createPrimaryKey(
+      tableName: String,
+      primaryKeyName: String,
+      columns: Seq[String]
+  ): Unit = {
+    val query = generateCreatePrimaryKeyStatement(tableName, primaryKeyName, columns)
+    val co    = genConnOpt(jdbcOptionsAddTable(tableName))
+
+    executeUpdate(co.conn, co.opt, query)(_ => {})
+  }
+
+  /** Drop a primary key
+    *
+    * @param tableName
+    * @param primaryKeyName
+    */
+  def dropPrimaryKey(tableName: String, primaryKeyName: String): Unit = {
+    val query = generateDropPrimaryKeyStatement(tableName, primaryKeyName)
+    val co    = genConnOpt(jdbcOptionsAddTable(tableName))
+
+    executeUpdate(co.conn, co.opt, query)(_ => {})
+  }
+
   /** Create a unique constraint for a table
     *
     * @param table
@@ -887,7 +998,7 @@ class MyJdbcUtils(conn: Jotting.Conn) {
   }
 }
 
-object MyJdbcUtils {
+object RegimeJdbcHelper {
 
   /** Upsert action's enum
     */
@@ -931,5 +1042,5 @@ object MyJdbcUtils {
 
   case class ConnectionOptions(conn: Connection, opt: JdbcOptionsInWrite)
 
-  def apply(conn: Jotting.Conn): MyJdbcUtils = new MyJdbcUtils(conn)
+  def apply(conn: Jotting.Conn): RegimeJdbcHelper = new RegimeJdbcHelper(conn)
 }

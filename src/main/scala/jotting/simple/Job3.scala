@@ -17,9 +17,9 @@ import org.apache.log4j.LogManager
 import org.apache.log4j.Level
 
 import jotting.Jotting._
-import jotting.MyJdbcUtils
+import jotting.RegimeJdbcHelper
 
-/** Test cases for verifying MyJdbcUtils' correctness
+/** Test cases for verifying RegimeJdbcHelper' correctness
   *
   *   - save
   *   - createUnique
@@ -34,8 +34,7 @@ object Job3 {
   def main(args: Array[String]): Unit = {
     implicit val spark = SparkSession
       .builder()
-      .appName("MyJdbcUtils test cases")
-      .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
+      .appName("RegimeJdbcHelper test cases")
       .getOrCreate()
 
     log.info("loading config file...")
@@ -84,7 +83,7 @@ object Job3 {
       .toDF("date", "language", "users_count")
       .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
-    val helper = MyJdbcUtils(conn)
+    val helper = RegimeJdbcHelper(conn)
 
     // save table
     helper.saveTable(df, save_to, "overwrite")
@@ -99,7 +98,7 @@ object Job3 {
 
   private def runJdbcCreateUnique(conn: Conn)(implicit spark: SparkSession): Unit = {
     log.info("runJdbcCreateUnique...")
-    MyJdbcUtils(conn).createUniqueConstraint(
+    RegimeJdbcHelper(conn).createUniqueConstraint(
       save_to,
       s"${save_to}_date_language",
       Seq("date", "language")
@@ -108,7 +107,7 @@ object Job3 {
 
   private def runJdbcDropUnique(conn: Conn)(implicit spark: SparkSession): Unit = {
     log.info("runJdbcDropUnique...")
-    MyJdbcUtils(conn).dropUniqueConstraint(
+    RegimeJdbcHelper(conn).dropUniqueConstraint(
       save_to,
       s"${save_to}_date_language"
     )
@@ -116,7 +115,7 @@ object Job3 {
 
   private def runJdbcCreateIndex(conn: Conn)(implicit spark: SparkSession): Unit = {
     log.info("runJdbcCreateIndex...")
-    MyJdbcUtils(conn).createIndex(
+    RegimeJdbcHelper(conn).createIndex(
       save_to,
       s"${save_to}_date_index",
       Seq("date")
@@ -125,7 +124,7 @@ object Job3 {
 
   private def runJdbcDropIndex(conn: Conn)(implicit spark: SparkSession): Unit = {
     log.info("runJdbcDropIndex...")
-    MyJdbcUtils(conn).dropIndex(
+    RegimeJdbcHelper(conn).dropIndex(
       save_to,
       s"${save_to}_date_language_index"
     )
@@ -155,7 +154,7 @@ object Job3 {
       .toDF("date", "language", "users_count")
       .withColumn("date", to_date($"date", "yyyy-MM-dd"))
 
-    MyJdbcUtils(conn).upsertTable(
+    RegimeJdbcHelper(conn).upsertTable(
       df,
       save_to,
       None,
@@ -169,11 +168,11 @@ object Job3 {
     log.info("runJdbcDatasetDelete...")
 
     val del = "date = '2010-01-23' and language = 'Scala'"
-    MyJdbcUtils(conn).deleteByConditions(save_to, del)
+    RegimeJdbcHelper(conn).deleteByConditions(save_to, del)
   }
 
   private def runJdbcDropTable(conn: Conn)(implicit spark: SparkSession): Unit = {
     log.info("runJdbcDropTable...")
-    MyJdbcUtils(conn).dropTable(save_to)
+    RegimeJdbcHelper(conn).dropTable(save_to)
   }
 }
