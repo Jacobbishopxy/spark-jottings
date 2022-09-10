@@ -3,58 +3,54 @@ package jotting
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types.{TimestampType}
 import org.apache.spark.sql.SaveMode
+import org.apache.spark.sql.functions._
 
 /** Get the latest update time from the target table, and query the rest of data from the resource
   * table.
   */
 object RegimeTimeHelper {
-
-  import Ordering.Implicits._
-
   private def getMaxDate(columnName: String, tableName: String) = s"""
-    SELECT MAX($columnName) FROM $tableName
+    SELECT MAX($columnName) AS max_$columnName FROM $tableName
     """
 
-  private def checkLastUpdateTime[T](
-      helper: RegimeJdbcHelper,
-      sql: String
-  )(implicit spark: SparkSession): Option[T] =
-    try {
-      Some(helper.readTable(sql).first().get(0).asInstanceOf[T])
-    } catch {
-      case _: Throwable => None
-    }
-
-  private def shouldInsertFrom[T: Ordering](
-      sourceTime: Option[T],
-      targetTime: Option[T]
-  ): Option[T] = {
-    (targetTime, sourceTime) match {
-      case (Some(st), Some(tt)) if st > tt => targetTime
-      case _                               => None
-    }
-  }
-
-  def insertFromLastUpdateTime[T: Ordering](
+  def insertFromLastUpdateTime(
       sourceConn: Jotting.Conn,
       sourceColumn: String,
       sourceTable: String,
       targetConn: Jotting.Conn,
       targetColumn: String,
       targetTable: String,
-      querySqlCst: T => String
+      querySqlCst: Any => String
   )(implicit spark: SparkSession): Unit = {
+    import spark.implicits._
+
     val sourceHelper = RegimeJdbcHelper(sourceConn)
     val targetHelper = RegimeJdbcHelper(targetConn)
 
-    val sourceTime = checkLastUpdateTime[T](sourceHelper, getMaxDate(sourceColumn, sourceTable))
-    val targetTime = checkLastUpdateTime[T](targetHelper, getMaxDate(targetColumn, targetTable))
+    val sourceDf = sourceHelper.readTable(getMaxDate(sourceColumn, sourceTable))
+    val targetDf = targetHelper.readTable(getMaxDate(targetColumn, targetTable))
 
-    val updateFrom = shouldInsertFrom(targetTime, sourceTime)
+    sourceDf.createOrReplaceTempView("SOURCE_DF")
+    targetDf.createOrReplaceTempView("TARGET_DF")
 
-    updateFrom.map { time =>
-      val df = sourceHelper.readTable(querySqlCst(time))
-      sourceHelper.saveTable(df, targetTable, SaveMode.Append)
+    val resRow = spark
+      .sql(s"""
+    SELECT if(
+      (SELECT first_value(max_$sourceColumn) FROM SOURCE_DF) > (SELECT first_value(max_$targetColumn) FROM TARGET_DF),
+      (SELECT first_value(max_$targetColumn) FROM TARGET_DF),
+      NULL
+    )
+    """)
+      .toDF()
+      .first()
+
+    if (resRow.isNullAt(0)) {
+      return
     }
+
+    val updateFrom = resRow.get(0)
+
+    val df = sourceHelper.readTable(querySqlCst(updateFrom))
+    sourceHelper.saveTable(df, targetTable, SaveMode.Append)
   }
 }

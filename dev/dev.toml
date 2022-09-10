@@ -12,7 +12,7 @@ echo ${MASTER_ADDR}
 echo args: ${@}
 '''
 
-[tasks.cluster_info]
+[tasks.cluster-info]
 command = "kubectl"
 args = ["cluster-info"]
 
@@ -97,7 +97,7 @@ kubectl run \
   ${SHARE_APP} ${@}
 '''
 
-# cargo make --makefile dev.toml job4 insertFromLastUpdateTime
+# cargo make --makefile dev.toml job4
 [tasks.job4]
 script = '''
 kubectl run \
@@ -114,5 +114,25 @@ kubectl run \
   --packages ${PACKAGES} \
   --jars ${SHARE_JARS_POSTGRES} \
   --class jotting.simple.Job4 \
+  ${SHARE_APP} ${@}
+'''
+
+# cargo make --makefile dev.toml job5 insertFromLastUpdateTime
+[tasks.job5]
+script = '''
+kubectl run \
+  --namespace ${K8S_NAMESPACE} job5 \
+  --rm \
+  --tty -i \
+  --restart Never \
+  --image ${K8S_CONTAINER_IMAGE} \
+  -- \
+  spark-submit \
+  --master ${SPARK_ADDR} \
+  --deploy-mode cluster \
+  --files ${SHARE_FILES} \
+  --packages ${PACKAGES} \
+  --jars ${SHARE_JARS_POSTGRES} \
+  --class jotting.simple.Job5 \
   ${SHARE_APP} ${@}
 '''
